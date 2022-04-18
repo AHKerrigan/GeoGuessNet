@@ -1,6 +1,6 @@
 import time
 from scipy.spatial.distance import cdist
-from sklearn.metrics import accuracy_score
+from sklearn.metrics import accuracy_score, f1_score
 import numpy as np
 
 from colorama import Fore, Style
@@ -12,6 +12,7 @@ import torch.nn.functional as F
 import pickle
 
 import geopy
+from tqdm import tqdm
 
 import evaluate
 
@@ -25,42 +26,23 @@ def train_single_frame(train_dataloader, model, criterion, optimizer, opt, epoch
     data_iterator = train_dataloader 
 
     losses = []
+    running_loss = 0.0
+    dataset_size = 0
 
     print("Starting Epoch", epoch)
 
-    for i ,( vid, coords) in enumerate(data_iterator):
+    bar = tqdm(enumerate(data_iterator), total=len(data_iterator))
+    for i ,( vid, coords, classes) in bar:
 
-        if i % 10 == 0:
-            print("Starting minibatch", i)
-        labels = []
-        for c in coords:
-            c = c.numpy()[0]
-            if c[1] > -72.2003206:
-                # Not in US (I think)
-                #print("Not in US I think")
-                labels.append([0.0, 0.0, 0.0, 0.0, 1.0])
-            elif c[1] > -100:
-                # Your in New York
-                #print("new York")
-                labels.append([1.0, 0.0, 0.0, 0.0, 0.0])
-            elif c[0] > 37.8184:
-                #print("Berkley")
-                # You;re in berkley
-                labels.append([0.0, 1.0, 0.0, 0.0, 0.0])
-            elif c[1] < -122.2781913:
-                # Youre in sanfran
-                #print("San Fran")
-                labels.append([0.0, 0.0, 1.0, 0.0, 0.0])
-            else:
-                # Bay area
-                #print("Bay Area")
-                labels.append([0.0, 0.0, 0.0, 1.0, 0.0])
-        print(labels)
+        batch_size = vid.shape[0]
+
+        labels = classes[:,0]
         labels = torch.tensor(labels).to(opt.device)
         vid = vid.to(opt.device)
 
         outs = model(vid)
-        print(outs)
+        #print(outs.shape)
+        #print(labels.shape)
 
         loss = criterion(outs, labels)
 
@@ -70,5 +52,43 @@ def train_single_frame(train_dataloader, model, criterion, optimizer, opt, epoch
         optimizer.step()
 
         losses.append(loss.item())
+
+        running_loss += (loss.item() * batch_size)
+        dataset_size += batch_size
+
+        epoch_loss = running_loss / dataset_size
+
+        bar.set_postfix(Epoch=epoch, Train_Loss=epoch_loss,
+                        LR=optimizer.param_groups[0]['lr'])
     print("The loss of epoch", epoch, "was ", np.mean(losses))
     writer.add_scalar('Loss/Train', np.mean(losses), epoch)
+
+def eval_one_epoch(val_dataloader, model, epoch, opt, writer):
+
+    data_iterator = val_dataloader
+
+    bar = tqdm(enumerate(val_dataloader), total=len(val_dataloader))
+
+    preds = []
+    targets = []
+    for i, (vid, coords, classes) in bar:
+
+        labels = classes[:,0].cpu().numpy()
+
+        vid = vid.to(opt.device)
+        outs = torch.argmax(model(vid), dim=-1).detach().cpu().numpy()
+
+        targets.append(labels)
+        preds.append(outs)
+
+    preds = np.concatenate(preds, axis=0)
+    targets = np.concatenate(targets, axis=0)
+
+   # print(targets, preds)
+    print("Epoch", epoch)
+    print("Macro F1 Score is", f1_score(targets, preds, average='macro'))
+    print("Weighted F1 Score is", f1_score(targets, preds, average='weighted'))
+    print("Accuracy is", accuracy_score(targets, preds))
+
+
+

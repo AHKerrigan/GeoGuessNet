@@ -52,30 +52,49 @@ def get_BDD_train():
     total = 0
     
     for vid in sorted(os.listdir(str(ground_folder))):
-        fnames.append(ground_folder + vid)
         if vid in class_info:
+            fnames.append(ground_folder + vid)
+            classes.append(class_info[vid]['classes'])
+            #print(class_info[vid]['classes'])
             valid += 1
             total += 1
         else:
-            total += 1
+            continue
+        
+        # For small scale testing
+        #if valid >= 1000:
+        #    break
         #print(class_info[vid]['classes'])
-
-    print("We have", valid / total, "percent of the videos")
-
-    return fnames
+    return fnames, classes
 
 def get_BDD_val():
 
     ground_folder  = '/home/alec/Documents/BigDatasets/BDD100k_Big/Ground/val/'
+    class_info = json.load(open("video_data.json"))
 
     #ground_folder  = '/home/alec/Documents/geolocalization2/BDD100k_Mini/Ground/val/SanFrancisco/'
 
     fnames = [] 
+    classes = []
+
+    valid = 0
+    total = 0
     
     for vid in sorted(os.listdir(str(ground_folder))):
-        fnames.append(ground_folder + vid)
-
-    return fnames
+        if vid in class_info:
+            fnames.append(ground_folder + vid)
+            classes.append(class_info[vid]['classes'])
+            #print(class_info[vid]['classes'])
+            valid += 1
+            total += 1
+        else:
+            continue
+        
+        #if valid >= 1000:
+        #    break
+        #print(class_info[vid]['classes'])
+    print(valid, "videos")
+    return fnames, classes
 
 def read_frames(fname, one_frame=False):
     path = glob.glob(fname + '/*.jpg')
@@ -97,9 +116,9 @@ class BDDDataset(Dataset):
         np.random.seed(0)
 
         if split == 'train':
-            fnames = get_BDD_train()
+            fnames, self.classes = get_BDD_train()
         else:
-            fnames = get_BDD_val()
+            fnames, self.classes = get_BDD_val()
         self.one_frame = one_frame
 
         np.random.shuffle(fnames)
@@ -122,20 +141,15 @@ class BDDDataset(Dataset):
         else:
             vid, coords = read_frames(sample, self.one_frame)
         vid = self.transform(vid)
-        return vid, torch.FloatTensor(coords)
+        return vid, torch.FloatTensor(coords), torch.LongTensor(self.classes[idx])
 
     def __len__(self):
         return len(self.data)
 
 if __name__ == "__main__":
-    dataset = BDDDataset(one_frame=True)
+    dataset = BDDDataset(one_frame=True, split='val')
     dataloader = torch.utils.data.DataLoader(dataset, batch_size=32, num_workers=2, shuffle=False, drop_last=False)
 
 
-    for i, (vid, coords) in enumerate(dataloader):
-        for c in coords:
-            c = c.numpy()[0]
-            if c[1] < -120:
-                print("This video is in New York")
-            else:
-                print("This video is not in New York")
+    for i, (vid, coords, classes) in enumerate(dataloader):
+        print(classes.shape)

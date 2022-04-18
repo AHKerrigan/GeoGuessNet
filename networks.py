@@ -42,7 +42,7 @@ class BasicDETR(nn.Module):
 
         # Remove the frame dimension
         x = x[:,:,0,:,:]
-        print(x.shape)
+        #print(x.shape)
 
         #inputs = self.feature_extractor.pad_and_create_pixel_mask(pixel_values_list=x, return_tensors="pt")
         #inputs = self.feature_extractor(images=x, return_tensors="pt")

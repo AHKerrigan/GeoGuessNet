@@ -6,7 +6,7 @@ import torch.nn as nn
 
 #import network
 import dataloader
-from train_and_eval import train_single_frame
+from train_and_eval import train_single_frame, eval_one_epoch
 
 from torch.utils.tensorboard import SummaryWriter
 
@@ -59,7 +59,7 @@ for epoch in range(opt.n_epochs):
         #train_one_epoch_temp1(train_dataloader, model, optimizer, opt, epoch, writer)
         #train_one_epoch_temp1(train_dataloader, model, optimizer, opt, epoch, writer)
         train_single_frame(train_dataloader=train_dataloader, model=model, criterion=criterion, optimizer=optimizer, opt=opt, epoch=epoch, writer=writer)
-    
+    eval_one_epoch(val_dataloader=val_dataloader, model=model, epoch=epoch, opt=opt, writer=writer)
     
     
     #acc10 = max(acc10, validate_one_epoch(val_dataloader, model, opt, epoch, writer))
