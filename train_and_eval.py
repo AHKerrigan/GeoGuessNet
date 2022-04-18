@@ -14,9 +14,10 @@ import pickle
 import geopy
 from tqdm import tqdm
 
+
 import evaluate
 
-def train_single_frame(train_dataloader, model, criterion, optimizer, opt, epoch, writer):
+def train_single_frame(train_dataloader, model, criterion, optimizer, scheduler, opt, epoch, writer):
 
 
     batch_times, model_times, losses = [], [], []
@@ -28,6 +29,7 @@ def train_single_frame(train_dataloader, model, criterion, optimizer, opt, epoch
     losses = []
     running_loss = 0.0
     dataset_size = 0
+
 
     print("Starting Epoch", epoch)
 
@@ -46,10 +48,11 @@ def train_single_frame(train_dataloader, model, criterion, optimizer, opt, epoch
 
         loss = criterion(outs, labels)
 
-        model.zero_grad()
         loss.backward()
 
         optimizer.step()
+        model.zero_grad()       
+        scheduler.step()
 
         losses.append(loss.item())
 

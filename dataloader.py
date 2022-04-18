@@ -21,6 +21,7 @@ from utilities.volume_transforms import  *
 from einops import rearrange
 
 import json
+from collections import Counter
 
 
 #from transformers import ViTModel, ViTConfig
@@ -50,11 +51,14 @@ def get_BDD_train():
 
     valid = 0
     total = 0
+
+    parent = []
     
     for vid in sorted(os.listdir(str(ground_folder))):
         if vid in class_info:
             fnames.append(ground_folder + vid)
             classes.append(class_info[vid]['classes'])
+            parent.append(class_info[vid]['classes'][0])
             #print(class_info[vid]['classes'])
             valid += 1
             total += 1
@@ -65,6 +69,8 @@ def get_BDD_train():
         #if valid >= 1000:
         #    break
         #print(class_info[vid]['classes'])
+    
+    print(Counter(parent))
     return fnames, classes
 
 def get_BDD_val():
@@ -147,9 +153,10 @@ class BDDDataset(Dataset):
         return len(self.data)
 
 if __name__ == "__main__":
-    dataset = BDDDataset(one_frame=True, split='val')
+    dataset = BDDDataset(one_frame=True, split='train')
     dataloader = torch.utils.data.DataLoader(dataset, batch_size=32, num_workers=2, shuffle=False, drop_last=False)
 
 
     for i, (vid, coords, classes) in enumerate(dataloader):
-        print(classes.shape)
+        #print(classes.shape)
+        continue

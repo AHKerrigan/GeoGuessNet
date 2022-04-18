@@ -35,7 +35,7 @@ class BasicDETR(nn.Module):
 
         self.hier_query = torch.rand((n_hier, 256)).cuda()
 
-        self.classifier0 = nn.Linear(256, 5)
+        self.classifier0 = nn.Linear(256, 4)
 
     def forward(self, x):
         bs, ch, l, h, w = x.shape
@@ -56,6 +56,27 @@ class BasicDETR(nn.Module):
 
         return F.relu(class0)
 
+class JustResNet(nn.Module):
+    def __init__(self):
+        super().__init__()
+
+        self.backbone = models.resnet50(pretrained=True)
+        self.backbone.fc = nn.Identity()
+
+        self.classifier0 = nn.Linear(2048, 4)
+
+    def forward(self, x):
+        bs, ch, l, h, w = x.shape
+
+        x = x[:,:,0,:,:]
+
+        x = self.backbone(x)
+        x = self.classifier0(x)
+
+        return x
+
+
+
 
 if __name__ == "__main__":
 
@@ -71,7 +92,7 @@ if __name__ == "__main__":
     print(outputs.last_hidden_state.shape)
     '''
 
-    model = BasicDETR()
+    model = JustResNet()
     x = model(image)
     print(x.shape)
     #model = BasicDETR()
