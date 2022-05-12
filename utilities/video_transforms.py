@@ -543,6 +543,7 @@ def normalize(clip, mean, std, inplace=False):
         clip = clip.clone()
 
     dtype = clip.dtype
+    #print(clip)
     mean = torch.as_tensor(mean, dtype=dtype, device=clip.device)
     std = torch.as_tensor(std, dtype=dtype, device=clip.device)
     clip.sub_(mean[:, None, None, None]).div_(std[:, None, None, None])

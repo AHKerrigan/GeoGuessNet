@@ -1,0 +1,22 @@
+# ninja log v5
+39	21554	1611922976000000000	/mnt/lustre/zhouqianyu/vod/workspace/TransVOD/models/ops/build/temp.linux-x86_64-3.7/mnt/lustre/zhouqianyu/vod/workspace/TransVOD/models/ops/src/cpu/ms_deform_attn_cpu.o	f6529e61a8c88466
+39	47827	1611923004000000000	/mnt/lustre/zhouqianyu/vod/workspace/TransVOD/models/ops/build/temp.linux-x86_64-3.7/mnt/lustre/zhouqianyu/vod/workspace/TransVOD/models/ops/src/vision.o	208a34d5e4a0f397
+39	142518	1611923099000000000	/mnt/lustre/zhouqianyu/vod/workspace/TransVOD/models/ops/build/temp.linux-x86_64-3.7/mnt/lustre/zhouqianyu/vod/workspace/TransVOD/models/ops/src/cuda/ms_deform_attn_cuda.o	a3a712f845c1ccba
+1	6907	1651590922794345750	/home/br087771/TransVOD/models/ops/build/temp.linux-x86_64-3.7/home/br087771/TransVOD/models/ops/src/cpu/ms_deform_attn_cpu.o	9c577432062d4cd1
+2	17998	1651590933877836296	/home/br087771/TransVOD/models/ops/build/temp.linux-x86_64-3.7/home/br087771/TransVOD/models/ops/src/cuda/ms_deform_attn_cuda.o	5cf84315caa01299
+3	26821	1651590942697430904	/home/br087771/TransVOD/models/ops/build/temp.linux-x86_64-3.7/home/br087771/TransVOD/models/ops/src/vision.o	af0507700f1100fe
+46	4555	1651590949257129389	/home/br087771/TransVOD/models/ops/build/temp.linux-x86_64-3.7/home/br087771/TransVOD/models/ops/src/cpu/ms_deform_attn_cpu.o	1b5bceb9735c14f2
+46	15385	1651590960080631889	/home/br087771/TransVOD/models/ops/build/temp.linux-x86_64-3.7/home/br087771/TransVOD/models/ops/src/cuda/ms_deform_attn_cuda.o	26bcc1855da3a36c
+47	22415	1651590967104309047	/home/br087771/TransVOD/models/ops/build/temp.linux-x86_64-3.7/home/br087771/TransVOD/models/ops/src/vision.o	8a940d07f57a120d
+1	4647	1651591710462143344	/home/br087771/myTransVOD/ops/build/temp.linux-x86_64-3.7/home/br087771/myTransVOD/ops/src/cpu/ms_deform_attn_cpu.o	cc906a25e94507ad
+2	15273	1651591721081655292	/home/br087771/myTransVOD/ops/build/temp.linux-x86_64-3.7/home/br087771/myTransVOD/ops/src/cuda/ms_deform_attn_cuda.o	91f2979d3ce659dc
+2	22360	1651591728161329924	/home/br087771/myTransVOD/ops/build/temp.linux-x86_64-3.7/home/br087771/myTransVOD/ops/src/vision.o	a128763a90514fe4
+9	4618	1651591734609033601	/home/br087771/myTransVOD/ops/build/temp.linux-x86_64-3.7/home/br087771/myTransVOD/ops/src/cpu/ms_deform_attn_cpu.o	529fa923ee3b3d60
+9	15387	1651591745372538932	/home/br087771/myTransVOD/ops/build/temp.linux-x86_64-3.7/home/br087771/myTransVOD/ops/src/cuda/ms_deform_attn_cuda.o	ee074d38e2a6246f
+10	22286	1651591752264222205	/home/br087771/myTransVOD/ops/build/temp.linux-x86_64-3.7/home/br087771/myTransVOD/ops/src/vision.o	f3bd5df02760fd82
+1	4641	1651591957286799979	/home/br087771/TransVOD/ops/build/temp.linux-x86_64-3.7/home/br087771/TransVOD/ops/src/cpu/ms_deform_attn_cpu.o	a24d96a01eb04b1e
+2	15179	1651591967814316175	/home/br087771/TransVOD/ops/build/temp.linux-x86_64-3.7/home/br087771/TransVOD/ops/src/cuda/ms_deform_attn_cuda.o	2a446ebbb346c3e1
+2	22716	1651591975349969865	/home/br087771/TransVOD/ops/build/temp.linux-x86_64-3.7/home/br087771/TransVOD/ops/src/vision.o	502693dad58c383b
+8	4589	1651591981761675208	/home/br087771/TransVOD/ops/build/temp.linux-x86_64-3.7/home/br087771/TransVOD/ops/src/cpu/ms_deform_attn_cpu.o	1c26e9f574ce0458
+8	15170	1651591992337189200	/home/br087771/TransVOD/ops/build/temp.linux-x86_64-3.7/home/br087771/TransVOD/ops/src/cuda/ms_deform_attn_cuda.o	a706fafbe0153008
+9	22309	1651591999468861457	/home/br087771/TransVOD/ops/build/temp.linux-x86_64-3.7/home/br087771/TransVOD/ops/src/vision.o	9e3981e958634350

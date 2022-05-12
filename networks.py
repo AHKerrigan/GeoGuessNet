@@ -38,10 +38,10 @@ class BasicDETR(nn.Module):
         self.classifier0 = nn.Linear(256, 4)
 
     def forward(self, x):
-        bs, ch, l, h, w = x.shape
+        bs, ch, h, w = x.shape
 
         # Remove the frame dimension
-        x = x[:,:,0,:,:]
+        #x = x[:,:,0,:,:]
         #print(x.shape)
 
         #inputs = self.feature_extractor.pad_and_create_pixel_mask(pixel_values_list=x, return_tensors="pt")
@@ -63,20 +63,26 @@ class JustResNet(nn.Module):
         self.backbone = models.resnet50(pretrained=True)
         self.backbone.fc = nn.Identity()
 
-        self.classifier0 = nn.Linear(2048, 4)
+        #self.classification = nn.Sequential(
+        #    nn.Linear(2048, 2048//2),
+        #    nn.ReLU(True),
+        #    nn.Dropout(p=0.1),
+        #    nn.Linear(2048//2, 4)
+        #)
+        self.class1 = nn.Linear(2048, 4)
+        self.class2 = nn.Linear(2048, 16)
+
 
     def forward(self, x):
-        bs, ch, l, h, w = x.shape
-
-        x = x[:,:,0,:,:]
+        bs, ch, h, w = x.shape
 
         x = self.backbone(x)
-        x = self.classifier0(x)
-
-        return x
-
-
-
+        #print("backbone is ", x.shape)
+        x1 = self.class1(x)
+        x2 = self.class2(x)
+        
+        #print(x)
+        return x1, x2
 
 if __name__ == "__main__":
 
@@ -94,7 +100,8 @@ if __name__ == "__main__":
 
     model = JustResNet()
     x = model(image)
-    print(x.shape)
+    
+    
     #model = BasicDETR()
     #tensor = torch.rand((16, 3, 15, 224, 224))
     #x = model(tensor)

@@ -17,6 +17,7 @@ from tqdm import tqdm
 
 import evaluate
 
+# Currently training on 4 frames
 def train_single_frame(train_dataloader, model, criterion, optimizer, scheduler, opt, epoch, writer):
 
 
@@ -38,21 +39,28 @@ def train_single_frame(train_dataloader, model, criterion, optimizer, scheduler,
 
         batch_size = vid.shape[0]
 
-        labels = classes[:,0]
-        labels = torch.tensor(labels).to(opt.device)
+        labels1 = classes[:,0].unsqueeze(1).repeat(1, 15)
+        labels2 = classes[:,1].unsqueeze(1).repeat(1, 15) 
+        labels1 = rearrange(labels1, 'bs c -> (bs c)')
+        labels2 = rearrange(labels2, 'bs c -> (bs c)')
+
+        labels1 = torch.tensor(labels1).to(opt.device)
+        labels2 = torch.tensor(labels2).to(opt.device)
+
+        vid = rearrange(vid, 'bs ch l h w -> (bs l) ch h w ')
         vid = vid.to(opt.device)
 
-        outs = model(vid)
-        #print(outs.shape)
-        #print(labels.shape)
+        outs1, outs2 = model(vid)
 
-        loss = criterion(outs, labels)
+        loss1 = criterion(outs1, labels1)
+        loss2 = criterion(outs2, labels2)
 
+        loss = loss1 + loss2
         loss.backward()
 
         optimizer.step()
         model.zero_grad()       
-        scheduler.step()
+        #scheduler.step()
 
         losses.append(loss.item())
 
@@ -78,8 +86,9 @@ def eval_one_epoch(val_dataloader, model, epoch, opt, writer):
 
         labels = classes[:,0].cpu().numpy()
 
-        vid = vid.to(opt.device)
-        outs = torch.argmax(model(vid), dim=-1).detach().cpu().numpy()
+        vid = vid.to(opt.device)[:,:,0,:,:]
+        outs, _ = model(vid)
+        outs = torch.argmax(outs, dim=-1).detach().cpu().numpy()
 
         targets.append(labels)
         preds.append(outs)
