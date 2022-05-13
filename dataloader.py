@@ -128,22 +128,38 @@ def get_BDD_val():
     print(valid, "videos")
     return fnames, classes
 
-def get_mp16_train(datainfo="/home/alec/Documents/GeoGuessNet/resources/mp16_1M.csv"):
+def get_mp16_train(classfile="/home/alec/Documents/GeoGuessNet/resources/mp16_1M_labels.json"):
 
+    class_info = json.load(open(classfile))
     base_folder = '/home/alec/Documents/BigDatasets/mp16/'
 
     fnames = []
     classes = []
 
-    f = open(datainfo)
-    reader = csv.reader(f, delimiter=',')
-
-    for row in reader:
-        filename = base_folder + row[0]
+    for row in class_info:
+        filename = base_folder + row
         if exists(filename):
             fnames.append(filename)
-            classes.append([int(x) for x in row[4:7]])
+            classes.append([int(x) for x in class_info[row]])
     
+    print(classes)
+    return fnames, classes
+
+def get_yfcc35600_test(classfile="/home/alec/Documents/GeoGuessNet/resources/yfcc_25600_1M_labels.json"):
+
+    class_info = json.load(open(classfile))
+    base_folder = '/home/alec/Documents/BigDatasets/yfcc25600/'
+
+    fnames = []
+    classes = []
+
+    for row in class_info:
+        filename = base_folder + row
+        if exists(filename):
+            fnames.append(filename)
+            classes.append([int(x) for x in class_info[row]])
+    
+    print(classes)
     return fnames, classes
 
 def read_frames(fname, one_frame=False):
@@ -205,9 +221,8 @@ class M16Dataset(Dataset):
 
         if split == 'train':
             fnames, self.classes = get_mp16_train()
-        else:
-            print("Not implemented")
-            #fnames, self.classes = get_BDD_val()
+        if split == 'yfcc25600':
+            fnames, self.classes = get_yfcc35600_test()
 
         np.random.shuffle(fnames)
         self.data = fnames
@@ -252,11 +267,11 @@ if __name__ == "__main__":
         plt.savefig("testimages/test"+str(i)+'.png')
     '''
     
-    dataset = M16Dataset()
+    dataset = M16Dataset(split='yfcc25600')
     dataloader = dataloader = torch.utils.data.DataLoader(dataset, batch_size=32, num_workers=0, shuffle=False, drop_last=False)
 
     for i, (vid, classes) in enumerate(dataloader):
-
+    
         print(vid.shape)
         print(classes.shape)
     
