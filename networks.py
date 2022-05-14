@@ -60,29 +60,26 @@ class JustResNet(nn.Module):
     def __init__(self):
         super().__init__()
 
-        self.backbone = models.resnet50(pretrained=True)
+        self.backbone = models.resnet101(pretrained=True)
         self.backbone.fc = nn.Identity()
 
         #self.classification = nn.Sequential(
         #    nn.Linear(2048, 2048//2),
         #    nn.ReLU(True),
         #    nn.Dropout(p=0.1),
-        #    nn.Linear(2048//2, 4)
+        #    nn.Linear(2048//2, 686)
         #)
-        self.class1 = nn.Linear(2048, 4)
-        self.class2 = nn.Linear(2048, 16)
-
+        self.classification = nn.Linear(2048, 3298)
 
     def forward(self, x):
         bs, ch, h, w = x.shape
 
         x = self.backbone(x)
         #print("backbone is ", x.shape)
-        x1 = self.class1(x)
-        x2 = self.class2(x)
+        x1 = self.classification(x)
         
         #print(x)
-        return x1, x2
+        return x1
 
 if __name__ == "__main__":
 

@@ -6,7 +6,7 @@ import torch.nn as nn
 
 #import network
 import dataloader
-from train_and_eval import train_single_frame, eval_one_epoch
+from train_and_eval import train_single_frame, eval_one_epoch, train_images, eval_images
 
 from torch.utils.tensorboard import SummaryWriter
 
@@ -22,16 +22,16 @@ opt.size = 224
 
 opt.n_epochs = 300
 
-opt.description = "Testing_oneframe_class"
+opt.description = "Just Resnet101 Everything Coarse"
 opt.evaluate = False
 
-opt.lr = 1e-4
+opt.lr = 1e-2
 
-opt.batch_size = 16
+opt.batch_size = 128
 
 
-train_dataset = dataloader.BDDDataset(split='train')
-val_dataset = dataloader.BDDDataset(split='val')
+train_dataset = dataloader.M16Dataset(split='train')
+val_dataset = dataloader.M16Dataset(split='yfcc25600')
 
 train_dataloader = torch.utils.data.DataLoader(train_dataset, batch_size=opt.batch_size, num_workers=opt.kernels, shuffle=False, drop_last=False)
 val_dataloader = torch.utils.data.DataLoader(val_dataset, batch_size=opt.batch_size, num_workers=opt.kernels, shuffle=False, drop_last=False)
@@ -47,7 +47,7 @@ model = networks.JustResNet()
 
 optimizer = torch.optim.Adam(model.parameters(), lr=opt.lr)
 
-scheduler = torch.optim.lr_scheduler.MultiStepLR(optimizer, [10, 20], gamma=0.1)
+scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=5, gamma=0.5)
 #scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer,T_max=500, 
 #                                                   eta_min=1e-6)
 
@@ -64,8 +64,10 @@ for epoch in range(opt.n_epochs):
         #train_one_epoch(train_dataloader, ground_model, aerial_model, ground_optimizer, aerial_optimzer, criterion, opt, epoch, writer)
         #train_one_epoch_temp1(train_dataloader, model, optimizer, opt, epoch, writer)
         #train_one_epoch_temp1(train_dataloader, model, optimizer, opt, epoch, writer)
-        train_single_frame(train_dataloader=train_dataloader, model=model, criterion=criterion, optimizer=optimizer, scheduler=scheduler, opt=opt, epoch=epoch, writer=writer)
-    eval_one_epoch(val_dataloader=val_dataloader, model=model, epoch=epoch, opt=opt, writer=writer)
+        #train_single_frame(train_dataloader=train_dataloader, model=model, criterion=criterion, optimizer=optimizer, scheduler=scheduler, opt=opt, epoch=epoch, writer=writer)
+        #train_images(train_dataloader=train_dataloader, model=model, criterion=criterion, optimizer=optimizer, scheduler=scheduler, opt=opt, epoch=epoch, writer=writer)
+    #eval_one_epoch(val_dataloader=val_dataloader, model=model, epoch=epoch, opt=opt, writer=writer)
+    eval_images(val_dataloader=val_dataloader, model=model, epoch=epoch, opt=opt, writer=writer)
     
     
     #acc10 = max(acc10, validate_one_epoch(val_dataloader, model, opt, epoch, writer))

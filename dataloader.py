@@ -128,7 +128,7 @@ def get_BDD_val():
     print(valid, "videos")
     return fnames, classes
 
-def get_mp16_train(classfile="/home/alec/Documents/GeoGuessNet/resources/mp16_1M_labels.json"):
+def get_mp16_train(classfile="/home/alec/Documents/GeoGuessNet/resources/mp16_labels.json"):
 
     class_info = json.load(open(classfile))
     base_folder = '/home/alec/Documents/BigDatasets/mp16/'
@@ -142,10 +142,10 @@ def get_mp16_train(classfile="/home/alec/Documents/GeoGuessNet/resources/mp16_1M
             fnames.append(filename)
             classes.append([int(x) for x in class_info[row]])
     
-    print(classes)
+
     return fnames, classes
 
-def get_yfcc35600_test(classfile="/home/alec/Documents/GeoGuessNet/resources/yfcc_25600_1M_labels.json"):
+def get_yfcc35600_test(classfile="/home/alec/Documents/GeoGuessNet/resources/yfcc_25600_labels.json"):
 
     class_info = json.load(open(classfile))
     base_folder = '/home/alec/Documents/BigDatasets/yfcc25600/'
@@ -159,7 +159,7 @@ def get_yfcc35600_test(classfile="/home/alec/Documents/GeoGuessNet/resources/yfc
             fnames.append(filename)
             classes.append([int(x) for x in class_info[row]])
     
-    print(classes)
+    #print(classes)
     return fnames, classes
 
 def read_frames(fname, one_frame=False):
@@ -247,7 +247,7 @@ class M16Dataset(Dataset):
         vid = self.transform(vid)
 
         #print(self.classes[idx])
-        return vid, torch.Tensor(self.classes[idx])
+        return vid, torch.Tensor(self.classes[idx]).to(torch.int64)
 
     def __len__(self):
         return len(self.data)
