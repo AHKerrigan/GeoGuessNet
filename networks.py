@@ -57,11 +57,16 @@ class BasicDETR(nn.Module):
         return F.relu(class0)
 
 class JustResNet(nn.Module):
-    def __init__(self):
+    def __init__(self, backbone=models.resnet50(pretrained=True)):
         super().__init__()
 
-        self.backbone = models.resnet101(pretrained=True)
-        self.backbone.fc = nn.Identity()
+        self.n_features = backbone.fc.in_features
+        self.backbone = torch.nn.Sequential(*list(backbone.children())[:-2])
+
+        self.backbone.avgpool = nn.AdaptiveAvgPool2d(1)
+        self.backbone.flatten = nn.Flatten(start_dim=1)
+
+        self.classification1 = nn.Linear(self.n_features, 2967)
 
         #self.classification = nn.Sequential(
         #    nn.Linear(2048, 2048//2),
@@ -69,17 +74,15 @@ class JustResNet(nn.Module):
         #    nn.Dropout(p=0.1),
         #    nn.Linear(2048//2, 686)
         #)
-        self.classification = nn.Linear(2048, 3298)
+        #self.classification = nn.Linear(2048, 3298)
 
     def forward(self, x):
         bs, ch, h, w = x.shape
 
         x = self.backbone(x)
-        #print("backbone is ", x.shape)
-        x1 = self.classification(x)
-        
-        #print(x)
-        return x1
+        x = self.classification1(x)
+
+        return x
 
 if __name__ == "__main__":
 

@@ -1,0 +1,8 @@
+resources/mp16_1M_labels.json
+resources/yfcc_25600_1M_labels.json
+resources/yfcc_25600_labels.json
+resources/mp16_labels.json
+examples
+runs
+testimages
+wandb

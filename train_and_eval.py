@@ -15,12 +15,12 @@ import geopy
 from geopy.distance import geodesic as GD
 from tqdm import tqdm
 
-
+import wandb
 import evaluate
 import pandas as pd
 
 # Currently training on 4 frames
-def train_single_frame(train_dataloader, model, criterion, optimizer, scheduler, opt, epoch, writer):
+def train_single_frame(train_dataloader, model, criterion, optimizer, scheduler, opt, epoch):
 
 
     batch_times, model_times, losses = [], [], []
@@ -74,9 +74,9 @@ def train_single_frame(train_dataloader, model, criterion, optimizer, scheduler,
         bar.set_postfix(Epoch=epoch, Train_Loss=epoch_loss,
                         LR=optimizer.param_groups[0]['lr'])
     print("The loss of epoch", epoch, "was ", np.mean(losses))
-    writer.add_scalar('Loss/Train', np.mean(losses), epoch)
+    #writer.add_scalar('Loss/Train', np.mean(losses), epoch)
 
-def train_images(train_dataloader, model, criterion, optimizer, scheduler, opt, epoch, writer):
+def train_images(train_dataloader, model, criterion, optimizer, scheduler, opt, epoch, val_dataloader=None):
 
     batch_times, model_times, losses = [], [], []
     accuracy_regressor, accuracy_classifier = [], []
@@ -92,6 +92,7 @@ def train_images(train_dataloader, model, criterion, optimizer, scheduler, opt, 
     print("Starting Epoch", epoch)
 
     bar = tqdm(enumerate(data_iterator), total=len(data_iterator))
+
     for i ,(imgs, classes) in bar:
 
         batch_size = imgs.shape[0]
@@ -103,15 +104,21 @@ def train_images(train_dataloader, model, criterion, optimizer, scheduler, opt, 
 
         imgs = imgs.to(opt.device)
 
+        optimizer.zero_grad()
         outs1 = model(imgs)
-        print(outs1)
+        '''
+        print("======================THE PREDICTIONS ================================")
+        print(torch.argmax(outs1, dim=1))
+        print("======================THE TRUTH       ======================================")
+        print(labels1)
+        '''
+        torch.set_printoptions(edgeitems=30)
 
         loss = criterion(outs1, labels1)
 
         loss.backward()
 
-        optimizer.step()
-        model.zero_grad()       
+        optimizer.step()     
         #scheduler.step()
 
         losses.append(loss.item())
@@ -123,25 +130,30 @@ def train_images(train_dataloader, model, criterion, optimizer, scheduler, opt, 
 
         bar.set_postfix(Epoch=epoch, Train_Loss=epoch_loss,
                         LR=optimizer.param_groups[0]['lr'])
+        
+        if i % 100 == 0:
+            wandb.log({"Training Loss" : np.mean(losses)})
+        if val_dataloader != None and i % 500 == 0:
+            eval_images(val_dataloader, model, epoch, opt)
     print("The loss of epoch", epoch, "was ", np.mean(losses))
-    writer.add_scalar('Loss/Train', np.mean(losses), epoch)
     
-def distance_accuracy(targets, preds, dis=2500):
-    coarse_gps = pd.read_csv("/home/alec/Documents/GeoGuessNet/resources/cells_50_5000.csv") 
+def distance_accuracy(targets, preds, dis=2500, set='im2gps3k'):
+    coarse_gps = pd.read_csv("/home/alec/Documents/BigDatasets/resources/cells_50_5000_images_4249548.csv") 
 
-    course_target = list(coarse_gps.iloc[targets][['latitude_mean', 'longitude_mean']].to_records(index=False))   
-    course_preds = list(coarse_gps.iloc[preds][['latitude_mean', 'longitude_mean']].to_records(index=False))   
+    course_preds = list(coarse_gps.iloc[preds][['latitude_mean', 'longitude_mean']].to_records(index=False))
+    course_target = [(x[0], x[1]) for x in targets]   
 
     total = len(course_target)
     correct = 0
 
     for i in range(len(course_target)):
-        if GD(course_preds[i], course_target[i]) <= dis:
+        #print(GD(course_preds[i], course_target[i]).km)
+        if GD(course_preds[i], course_target[i]).km <= dis:
             correct += 1
 
     return correct / total
 
-def eval_images(val_dataloader, model, epoch, opt, writer):
+def eval_images(val_dataloader, model, epoch, opt):
 
     data_iterator = val_dataloader
 
@@ -152,7 +164,7 @@ def eval_images(val_dataloader, model, epoch, opt, writer):
 
     for i, (imgs, classes) in bar:
 
-        labels = classes[:,0].cpu().numpy()
+        labels = classes.cpu().numpy()
 
         imgs = imgs.to(opt.device)
         outs = model(imgs)
@@ -164,25 +176,32 @@ def eval_images(val_dataloader, model, epoch, opt, writer):
     preds = np.concatenate(preds, axis=0)
     targets = np.concatenate(targets, axis=0)
 
-
+    '''
     macrof1 = f1_score(targets, preds, average='macro')
     weightedf1 = f1_score(targets, preds, average='weighted')
     accuracy =  accuracy_score(targets, preds)
+    '''
+    #np.set_printoptions(precision=15)
+    #print(targets)
     acc2500 = distance_accuracy(targets, preds)
 
     print("Epoch", epoch)
+    '''
     print("Macro F1 Score is", macrof1)
     print("Weighted F1 Score is", weightedf1)
     print("Accuracy is", accuracy)
+    '''
     print("Accuracy2500 is", acc2500)
 
+    '''
     writer.add_scalar('Test/macrof1', macrof1, epoch)
     writer.add_scalar('Test/weightedf1', weightedf1, epoch)
     writer.add_scalar('Test/accuracy', accuracy, epoch)
-    writer.add_scalar('Test/acc2500', acc2500, epoch)
+    '''
+    wandb.log({"2500 Accuracy" : acc2500})
 
 
-def eval_one_epoch(val_dataloader, model, epoch, opt, writer):
+def eval_one_epoch(val_dataloader, model, epoch, opt):
 
     data_iterator = val_dataloader
 

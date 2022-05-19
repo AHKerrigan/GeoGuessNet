@@ -10,6 +10,7 @@ import os
 import torch
 
 import cv2
+import pandas as pd
 
 import numpy as np
 import glob
@@ -19,6 +20,8 @@ import random
 #from utilities.volume_transforms import  *
 
 import torchvision.transforms as transforms 
+from torchvision.utils import save_image
+
 
 from einops import rearrange
 import csv
@@ -58,7 +61,15 @@ def m16_transform():
         transforms.Normalize((0.485, 0.456, 0.406), (0.229, 0.224, 0.225))
     ])
     return m16_transform_list
-
+def m16_val_transform():
+    m16_transform_list = transforms.Compose([
+        transforms.Resize(256),
+        transforms.CenterCrop(224),
+        transforms.PILToTensor(),
+        transforms.ConvertImageDtype(torch.float),
+        transforms.Normalize((0.485, 0.456, 0.406), (0.229, 0.224, 0.225))
+    ])
+    return m16_transform_list    
 
 def get_BDD_train():
 
@@ -128,9 +139,11 @@ def get_BDD_val():
     print(valid, "videos")
     return fnames, classes
 
-def get_mp16_train(classfile="/home/alec/Documents/GeoGuessNet/resources/mp16_labels.json"):
+def get_mp16_train(classfile="/home/alec/Documents/BigDatasets/resources/mp16_places365_mapping_h3.json"):
 
     class_info = json.load(open(classfile))
+
+    #print("The classes should have been", class_info['34/8d/9055806529.jpg'])
     base_folder = '/home/alec/Documents/BigDatasets/mp16/'
 
     fnames = []
@@ -145,7 +158,7 @@ def get_mp16_train(classfile="/home/alec/Documents/GeoGuessNet/resources/mp16_la
 
     return fnames, classes
 
-def get_yfcc35600_test(classfile="/home/alec/Documents/GeoGuessNet/resources/yfcc_25600_labels.json"):
+def get_yfcc35600_test(classfile="/home/alec/Documents/BigDatasets/resources/yfcc_25600_places365_mapping_h3.json"):
 
     class_info = json.load(open(classfile))
     base_folder = '/home/alec/Documents/BigDatasets/yfcc25600/'
@@ -158,6 +171,24 @@ def get_yfcc35600_test(classfile="/home/alec/Documents/GeoGuessNet/resources/yfc
         if exists(filename):
             fnames.append(filename)
             classes.append([int(x) for x in class_info[row]])
+    
+    #print(classes)
+    return fnames, classes
+
+def get_im2gps3k_test(classfile="/home/alec/Documents/BigDatasets/resources/im2gps3k_places365.csv"):
+
+    class_info = pd.read_csv(classfile)
+    base_folder = '/home/alec/Documents/SmallDatasets/im2gps3ktest/'
+
+    fnames = []
+    classes = []
+
+    for row in class_info.iterrows():
+        filename = base_folder + row[1]['IMG_ID']
+        if exists(filename):
+            fnames.append(filename)
+            #print(row[1]['LAT'])
+            classes.append([float(row[1]['LAT']), float(row[1]['LON'])])
     
     #print(classes)
     return fnames, classes
@@ -218,17 +249,27 @@ class M16Dataset(Dataset):
     def __init__(self, crop_size = 112, split='train'):
 
         np.random.seed(0)
-
+        
+        self.split = split 
         if split == 'train':
-            fnames, self.classes = get_mp16_train()
+            fnames, classes = get_mp16_train()
         if split == 'yfcc25600':
-            fnames, self.classes = get_yfcc35600_test()
+            fnames, classes = get_yfcc35600_test()
+        if split == 'im2gps3k':
+            fnames, classes = get_im2gps3k_test()
 
-        np.random.shuffle(fnames)
-        self.data = fnames
+        temp = list(zip(fnames, classes))
+        np.random.shuffle(temp)
+        self.fnames, self.classes = zip(*temp)
+        self.fnames, self.classes = list(self.fnames), list(self.classes)
+
+        self.data = self.fnames
 
         print("Loaded data, total vids", len(fnames))
-        self.transform = m16_transform()
+        if self.split == 'train':
+            self.transform = m16_transform()
+        else:
+            self.transform = m16_val_transform()
 
     def __getitem__(self, idx):
 
@@ -247,7 +288,10 @@ class M16Dataset(Dataset):
         vid = self.transform(vid)
 
         #print(self.classes[idx])
-        return vid, torch.Tensor(self.classes[idx]).to(torch.int64)
+        if self.split == 'train':
+            return vid, torch.Tensor(self.classes[idx]).to(torch.int64)
+        else:
+            return vid, torch.Tensor(self.classes[idx])
 
     def __len__(self):
         return len(self.data)
@@ -267,11 +311,10 @@ if __name__ == "__main__":
         plt.savefig("testimages/test"+str(i)+'.png')
     '''
     
-    dataset = M16Dataset(split='yfcc25600')
+    dataset = M16Dataset(split='train')
     dataloader = dataloader = torch.utils.data.DataLoader(dataset, batch_size=32, num_workers=0, shuffle=False, drop_last=False)
 
-    for i, (vid, classes) in enumerate(dataloader):
-    
-        print(vid.shape)
-        print(classes.shape)
-    
+    for i, (img, classes) in enumerate(dataloader):
+        print(img)
+        print(classes)
+        break
