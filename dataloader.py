@@ -71,9 +71,9 @@ def m16_val_transform():
     ])
     return m16_transform_list    
 
-def get_BDD_train():
+def get_BDD_train(opt):
 
-    ground_folder  = '/home/alec/Documents/BigDatasets/BDD100k_Big/Ground/train/'
+    ground_folder  = opt.BDDfolder + '/Ground/train/'
     class_info = json.load(open("video_data.json"))
 
     #aerial_folder = '/home/alec/Documents/geolocalization2/BDD100k_Mini/Aerial/train/SanFrancisco/'
@@ -139,12 +139,12 @@ def get_BDD_val():
     print(valid, "videos")
     return fnames, classes
 
-def get_mp16_train(classfile="/home/alec/Documents/BigDatasets/resources/mp16_places365_mapping_h3.json"):
+def get_mp16_train(classfile="mp16_places365_mapping_h3.json", opt=None):
 
-    class_info = json.load(open(classfile))
+    class_info = json.load(open(opt.resources + classfile))
 
     #print("The classes should have been", class_info['34/8d/9055806529.jpg'])
-    base_folder = '/home/alec/Documents/BigDatasets/mp16/'
+    base_folder = opt.mp16folder
 
     fnames = []
     classes = []
@@ -158,10 +158,10 @@ def get_mp16_train(classfile="/home/alec/Documents/BigDatasets/resources/mp16_pl
 
     return fnames, classes
 
-def get_yfcc35600_test(classfile="/home/alec/Documents/BigDatasets/resources/yfcc_25600_places365_mapping_h3.json"):
+def get_yfcc35600_test(classfile="yfcc_25600_places365_mapping_h3.json", opt=None):
 
-    class_info = json.load(open(classfile))
-    base_folder = '/home/alec/Documents/BigDatasets/yfcc25600/'
+    class_info = json.load(open(opt.resourcse + classfile))
+    base_folder = opt.yfcc25600folder
 
     fnames = []
     classes = []
@@ -175,10 +175,10 @@ def get_yfcc35600_test(classfile="/home/alec/Documents/BigDatasets/resources/yfc
     #print(classes)
     return fnames, classes
 
-def get_im2gps3k_test(classfile="/home/alec/Documents/BigDatasets/resources/im2gps3k_places365.csv"):
+def get_im2gps3k_test(classfile="im2gps3k_places365.csv", opt=None):
 
-    class_info = pd.read_csv(classfile)
-    base_folder = '/home/alec/Documents/SmallDatasets/im2gps3ktest/'
+    class_info = pd.read_csv(opt.resources + classfile)
+    base_folder = opt.im2gps3k
 
     fnames = []
     classes = []
@@ -246,17 +246,19 @@ class BDDDataset(Dataset):
     
 class M16Dataset(Dataset):
 
-    def __init__(self, crop_size = 112, split='train'):
+    def __init__(self, crop_size = 112, split='train', opt=None):
 
         np.random.seed(0)
         
         self.split = split 
         if split == 'train':
-            fnames, classes = get_mp16_train()
+            fnames, classes = get_mp16_train(opt=opt)
+        if split == 'train1M':
+            fnames, classes = get_mp16_train(classfile="mp16_places365_1M_mapping_h3.json", opt=opt)            
         if split == 'yfcc25600':
-            fnames, classes = get_yfcc35600_test()
+            fnames, classes = get_yfcc35600_test(opt=opt)
         if split == 'im2gps3k':
-            fnames, classes = get_im2gps3k_test()
+            fnames, classes = get_im2gps3k_test(opt=opt)
 
         temp = list(zip(fnames, classes))
         np.random.shuffle(temp)
@@ -288,7 +290,7 @@ class M16Dataset(Dataset):
         vid = self.transform(vid)
 
         #print(self.classes[idx])
-        if self.split == 'train':
+        if self.split in ['train', 'train1M'] :
             return vid, torch.Tensor(self.classes[idx]).to(torch.int64)
         else:
             return vid, torch.Tensor(self.classes[idx])

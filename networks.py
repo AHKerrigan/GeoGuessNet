@@ -57,7 +57,7 @@ class BasicDETR(nn.Module):
         return F.relu(class0)
 
 class JustResNet(nn.Module):
-    def __init__(self, backbone=models.resnet50(pretrained=True)):
+    def __init__(self, backbone=models.resnet50(pretrained=True), trainset='train'):
         super().__init__()
 
         self.n_features = backbone.fc.in_features
@@ -66,7 +66,10 @@ class JustResNet(nn.Module):
         self.backbone.avgpool = nn.AdaptiveAvgPool2d(1)
         self.backbone.flatten = nn.Flatten(start_dim=1)
 
-        self.classification1 = nn.Linear(self.n_features, 2967)
+        if trainset == 'train':
+            self.classification1 = nn.Linear(self.n_features, 2967)
+        if trainset == 'train1M':
+            self.classification1 = nn.Linear(self.n_features, 689)
 
         #self.classification = nn.Sequential(
         #    nn.Linear(2048, 2048//2),

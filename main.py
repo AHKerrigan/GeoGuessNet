@@ -17,24 +17,34 @@ import networks
 
 parser = argparse.ArgumentParser()
 
+
+
 opt = parser.parse_args()
 opt.kernels = multiprocessing.cpu_count()
+
+opt.BDDfolder = '/home/alec/Documents/BigDatasets/BDD100k_Big'
+opt.yfcc25600folder = '/home/alec/Documents/BigDatasets/yfcc25600/'
+opt.mp16folder = '/home/alec/Documents/BigDatasets/mp16/'
+opt.im2gps3k = '/home/alec/Documents/SmallDatasets/im2gps3ktest/'
+
+opt.resources = '/home/alec/Documents/BigDatasets/resources/'
+
 opt.size = 224
 
 opt.n_epochs = 20
 
-opt.description = 'Trying ResNet50 with Im2GPS'
+opt.description = 'ResNet50-coarse'
 opt.evaluate = False
 
 opt.lr = 1e-2
 
 opt.batch_size = 256
+opt.trainset = 'train'
 
+train_dataset = dataloader.M16Dataset(split=opt.trainset, opt=opt)
+val_dataset = dataloader.M16Dataset(split='im2gps3k', opt=opt)
 
-train_dataset = dataloader.M16Dataset(split='train')
-val_dataset = dataloader.M16Dataset(split='im2gps3k')
-
-train_dataloader = torch.utils.data.DataLoader(train_dataset, batch_size=opt.batch_size, num_workers=opt.kernels, shuffle=False, drop_last=False)
+train_dataloader = torch.utils.data.DataLoader(train_dataset, batch_size=opt.batch_size, num_workers=opt.kernels, shuffle=False, drop_last=False, )
 val_dataloader = torch.utils.data.DataLoader(val_dataset, batch_size=opt.batch_size, num_workers=opt.kernels, shuffle=False, drop_last=False)
 
 opt.device = torch.device('cuda')
@@ -56,7 +66,7 @@ wandb.init(project='GeoGuessNet',
 #criterion = torch.nn.CrossEntropyLoss(weight=class_weights)
 criterion = torch.nn.CrossEntropyLoss()
 
-model = networks.JustResNet()
+model = networks.JustResNet(trainset=opt.trainset)
 
 optimizer = torch.optim.SGD(model.parameters(), lr=opt.lr, momentum=0.9, weight_decay=0.0001)
 
@@ -80,7 +90,7 @@ for epoch in range(opt.n_epochs):
         #train_single_frame(train_dataloader=train_dataloader, model=model, criterion=criterion, optimizer=optimizer, scheduler=scheduler, opt=opt, epoch=epoch, writer=writer)
         train_images(train_dataloader=train_dataloader, model=model, criterion=criterion, optimizer=optimizer, scheduler=scheduler, opt=opt, epoch=epoch, val_dataloader=val_dataloader)
     #eval_one_epoch(val_dataloader=val_dataloader, model=model, epoch=epoch, opt=opt, writer=writer)
-    torch.save(model.state_dict(), weights + '/' opt.description + '.pth')
+    torch.save(model.state_dict(), 'weights/' + opt.description + '.pth')
     eval_images(val_dataloader=val_dataloader, model=model, epoch=epoch, opt=opt)
     scheduler.step()
     

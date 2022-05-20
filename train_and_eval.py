@@ -132,13 +132,16 @@ def train_images(train_dataloader, model, criterion, optimizer, scheduler, opt, 
                         LR=optimizer.param_groups[0]['lr'])
         
         if i % 100 == 0:
-            wandb.log({"Training Loss" : np.mean(losses)})
+            wandb.log({"Training Loss" : loss.item()})
         if val_dataloader != None and i % 500 == 0:
             eval_images(val_dataloader, model, epoch, opt)
     print("The loss of epoch", epoch, "was ", np.mean(losses))
     
-def distance_accuracy(targets, preds, dis=2500, set='im2gps3k'):
-    coarse_gps = pd.read_csv("/home/alec/Documents/BigDatasets/resources/cells_50_5000_images_4249548.csv") 
+def distance_accuracy(targets, preds, dis=2500, set='im2gps3k', trainset='train', opt=None):
+    if trainset == 'train':
+        coarse_gps = pd.read_csv(opt.resources + "cells_50_5000_images_4249548.csv") 
+    if trainset == 'train1M':
+        coarse_gps = pd.read_csv(opt.resources + "cells_50_5000_images_1M.csv")   
 
     course_preds = list(coarse_gps.iloc[preds][['latitude_mean', 'longitude_mean']].to_records(index=False))
     course_target = [(x[0], x[1]) for x in targets]   
@@ -183,22 +186,25 @@ def eval_images(val_dataloader, model, epoch, opt):
     '''
     #np.set_printoptions(precision=15)
     #print(targets)
-    acc2500 = distance_accuracy(targets, preds)
+    acc2500 = distance_accuracy(targets, preds, dis=2500, trainset=opt.trainset, opt=opt)
+    acc750 = distance_accuracy(targets, preds, dis=750, trainset=opt.trainset,opt=opt)
+    acc200 = distance_accuracy(targets, preds, dis=200, trainset=opt.trainset, opt=opt)
+    acc25 = distance_accuracy(targets, preds, dis=25, trainset=opt.trainset, opt=opt)
+    acc1 = distance_accuracy(targets, preds, dis=1, trainset=opt.trainset, opt=opt)
 
     print("Epoch", epoch)
-    '''
-    print("Macro F1 Score is", macrof1)
-    print("Weighted F1 Score is", weightedf1)
-    print("Accuracy is", accuracy)
-    '''
-    print("Accuracy2500 is", acc2500)
 
-    '''
-    writer.add_scalar('Test/macrof1', macrof1, epoch)
-    writer.add_scalar('Test/weightedf1', weightedf1, epoch)
-    writer.add_scalar('Test/accuracy', accuracy, epoch)
-    '''
+    print("Accuracy2500 is", acc2500)
+    print("Accuracy750 is", acc750)
+    print("Accuracy200 is", acc200)
+    print("Accuracy25 is", acc25)
+    print("Accuracy1 is", acc1)
+
     wandb.log({"2500 Accuracy" : acc2500})
+    wandb.log({"750 Accuracy" : acc750})
+    wandb.log({"200 Accuracy" : acc200})
+    wandb.log({"25 Accuracy" : acc25})
+    wandb.log({"1 Accuracy" : acc1})
 
 
 def eval_one_epoch(val_dataloader, model, epoch, opt):
