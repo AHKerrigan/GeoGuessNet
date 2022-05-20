@@ -14,40 +14,9 @@ import wandb
 from torch.nn import TransformerEncoder, TransformerEncoderLayer
 #from networks import GeoCLIP, VGGTriplet, BasicNetVLAD
 import networks 
+from config import getopt
 
-parser = argparse.ArgumentParser()
-
-
-
-opt = parser.parse_args()
-opt.kernels = multiprocessing.cpu_count()
-
-opt.BDDfolder = '/home/alec/Documents/BigDatasets/BDD100k_Big'
-opt.yfcc25600folder = '/home/alec/Documents/BigDatasets/yfcc25600/'
-opt.mp16folder = '/home/alec/Documents/BigDatasets/mp16/'
-opt.im2gps3k = '/home/alec/Documents/SmallDatasets/im2gps3ktest/'
-
-opt.resources = '/home/alec/Documents/BigDatasets/resources/'
-
-opt.size = 224
-
-opt.n_epochs = 20
-
-opt.description = 'ResNet50-coarse'
-opt.evaluate = False
-
-opt.lr = 1e-2
-
-opt.batch_size = 256
-opt.trainset = 'train'
-
-train_dataset = dataloader.M16Dataset(split=opt.trainset, opt=opt)
-val_dataset = dataloader.M16Dataset(split='im2gps3k', opt=opt)
-
-train_dataloader = torch.utils.data.DataLoader(train_dataset, batch_size=opt.batch_size, num_workers=opt.kernels, shuffle=False, drop_last=False, )
-val_dataloader = torch.utils.data.DataLoader(val_dataset, batch_size=opt.batch_size, num_workers=opt.kernels, shuffle=False, drop_last=False)
-
-opt.device = torch.device('cuda')
+opt = getopt()
 
 
 config = {
