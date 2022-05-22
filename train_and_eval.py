@@ -89,6 +89,9 @@ def train_images(train_dataloader, model, criterion, optimizer, scheduler, opt, 
     dataset_size = 0
 
 
+    val_cycle = (len(data_iterator.dataset.data) // (opt.batch_size * 164))
+    print("Outputting loss every", val_cycle, "batches")
+    print("Validating every", val_cycle*5, "batches")
     print("Starting Epoch", epoch)
 
     bar = tqdm(enumerate(data_iterator), total=len(data_iterator))
@@ -131,9 +134,9 @@ def train_images(train_dataloader, model, criterion, optimizer, scheduler, opt, 
         bar.set_postfix(Epoch=epoch, Train_Loss=epoch_loss,
                         LR=optimizer.param_groups[0]['lr'])
         
-        if i % 100 == 0:
+        if i % val_cycle == 0:
             wandb.log({"Training Loss" : loss.item()})
-        if val_dataloader != None and i % 500 == 0:
+        if val_dataloader != None and i % (val_cycle * 5) == 0:
             eval_images(val_dataloader, model, epoch, opt)
     print("The loss of epoch", epoch, "was ", np.mean(losses))
     

@@ -7,3 +7,7 @@ runs/
 testimages/
 wandb/
 weights/
+config.py
+weights/*
+wandb/*
+

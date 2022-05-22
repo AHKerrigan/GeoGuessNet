@@ -20,6 +20,7 @@ from geopy.distance import lonlat, distance
 
 from utilities.detrstuff import nested_tensor_from_tensor_list
 from transformers import DetrFeatureExtractor, DetrForSegmentation
+from transformers import ViTModel
 
 
 class BasicDETR(nn.Module):
@@ -60,11 +61,16 @@ class JustResNet(nn.Module):
     def __init__(self, backbone=models.resnet50(pretrained=True), trainset='train'):
         super().__init__()
 
+        '''
         self.n_features = backbone.fc.in_features
         self.backbone = torch.nn.Sequential(*list(backbone.children())[:-2])
 
         self.backbone.avgpool = nn.AdaptiveAvgPool2d(1)
         self.backbone.flatten = nn.Flatten(start_dim=1)
+        '''
+        self.backbone = ViTModel.from_pretrained("google/vit-base-patch16-224-in21k")
+        self.n_features = 768
+
 
         if trainset == 'train':
             self.classification1 = nn.Linear(self.n_features, 2967)
@@ -82,8 +88,9 @@ class JustResNet(nn.Module):
     def forward(self, x):
         bs, ch, h, w = x.shape
 
-        x = self.backbone(x)
+        x = self.backbone(x).pooler_output
         x = self.classification1(x)
+
 
         return x
 

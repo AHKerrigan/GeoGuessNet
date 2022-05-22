@@ -23,7 +23,7 @@ config = {
     'learning_rate' : opt.lr,
     'epochs' : opt.n_epochs,
     'batch_size' : opt.batch_size,
-    'architecture' : "Just ResNet50"
+    'architecture' : "Just ViT Base"
 }
 
 wandb.init(project='GeoGuessNet', 
@@ -33,6 +33,12 @@ wandb.init(project='GeoGuessNet',
 #weights = [1/40619, 1/2063, 1/1147, 1/4391]
 #class_weights = torch.FloatTensor(weights).cuda()
 #criterion = torch.nn.CrossEntropyLoss(weight=class_weights)
+train_dataset = dataloader.M16Dataset(split='train', opt=opt)
+val_dataset = dataloader.M16Dataset(split='im2gps3k', opt=opt)
+
+train_dataloader = torch.utils.data.DataLoader(train_dataset, batch_size=opt.batch_size, num_workers=opt.kernels, shuffle=False, drop_last=False)
+val_dataloader = torch.utils.data.DataLoader(val_dataset, batch_size=opt.batch_size, num_workers=opt.kernels, shuffle=False, drop_last=False)
+
 criterion = torch.nn.CrossEntropyLoss()
 
 model = networks.JustResNet(trainset=opt.trainset)
