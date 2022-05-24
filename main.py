@@ -23,12 +23,14 @@ config = {
     'learning_rate' : opt.lr,
     'epochs' : opt.n_epochs,
     'batch_size' : opt.batch_size,
-    'architecture' : "Just ViT Base"
+    'architecture' : opt.archname
 }
 
-wandb.init(project='GeoGuessNet', 
-        entity='ahkerrigan',
+wandb.init(project='geoguessnet', 
+        entity='crcvgeo',
         config=config)
+wandb.run.name = opt.description
+wandb.save()
 
 #weights = [1/40619, 1/2063, 1/1147, 1/4391]
 #class_weights = torch.FloatTensor(weights).cuda()

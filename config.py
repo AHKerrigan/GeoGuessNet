@@ -21,6 +21,7 @@ def getopt():
     opt.n_epochs = 20
 
     opt.description = 'ViT Base-coarse'
+    opt.archname = 'Just ViT'
     opt.evaluate = False
 
     opt.lr = 1e-2
