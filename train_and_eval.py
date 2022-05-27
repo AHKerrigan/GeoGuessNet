@@ -100,24 +100,31 @@ def train_images(train_dataloader, model, criterion, optimizer, scheduler, opt, 
 
         batch_size = imgs.shape[0]
         labels1 = classes[:,0]
+        labels2 = classes[:,1]
+        labels3 = classes[:,2]
         #labels1 = rearrange(labels1, 'bs c -> (bs c)')
 
         labels1 = labels1.to(opt.device)
+        labels2 = labels2.to(opt.device)
+        labels3 = labels3.to(opt.device)
 
 
         imgs = imgs.to(opt.device)
 
         optimizer.zero_grad()
-        outs1 = model(imgs)
-        '''
-        print("======================THE PREDICTIONS ================================")
-        print(torch.argmax(outs1, dim=1))
-        print("======================THE TRUTH       ======================================")
-        print(labels1)
-        '''
+        outs1, outs2, outs3 = model(imgs)
+
         torch.set_printoptions(edgeitems=30)
 
-        loss = criterion(outs1, labels1)
+        loss1 = 0
+        loss2 = 0
+        loss3 = 0
+
+        loss1 = criterion(outs1, labels1)
+        loss2 = criterion(outs2, labels2)
+        loss3 = criterion(outs3, labels3)
+
+        loss = loss1 + loss2 + loss3
 
         loss.backward()
 
@@ -136,6 +143,7 @@ def train_images(train_dataloader, model, criterion, optimizer, scheduler, opt, 
         
         if i % val_cycle == 0:
             wandb.log({"Training Loss" : loss.item()})
+            #print("interation", i, "of", len(data_iterator))
         if val_dataloader != None and i % (val_cycle * 5) == 0:
             eval_images(val_dataloader, model, epoch, opt)
     print("The loss of epoch", epoch, "was ", np.mean(losses))
@@ -144,7 +152,9 @@ def distance_accuracy(targets, preds, dis=2500, set='im2gps3k', trainset='train'
     if trainset == 'train':
         coarse_gps = pd.read_csv(opt.resources + "cells_50_5000_images_4249548.csv") 
     if trainset == 'train1M':
-        coarse_gps = pd.read_csv(opt.resources + "cells_50_5000_images_1M.csv")   
+        coarse_gps = pd.read_csv(opt.resources + "cells_50_5000_images_1M.csv")
+    if trainset == 'trainbdd':
+        coarse_gps = pd.read_csv(opt.resources + "BDD-50-200images.csv")        
 
     course_preds = list(coarse_gps.iloc[preds][['latitude_mean', 'longitude_mean']].to_records(index=False))
     course_target = [(x[0], x[1]) for x in targets]   
@@ -173,8 +183,9 @@ def eval_images(val_dataloader, model, epoch, opt):
         labels = classes.cpu().numpy()
 
         imgs = imgs.to(opt.device)
-        outs = model(imgs)
-        outs = torch.argmax(outs, dim=-1).detach().cpu().numpy()
+        with torch.no_grad():
+            outs1, outs2, outs3 = model(imgs)
+        outs = torch.argmax(outs3, dim=-1).detach().cpu().numpy()
 
         targets.append(labels)
         preds.append(outs)
@@ -189,25 +200,12 @@ def eval_images(val_dataloader, model, epoch, opt):
     '''
     #np.set_printoptions(precision=15)
     #print(targets)
-    acc2500 = distance_accuracy(targets, preds, dis=2500, trainset=opt.trainset, opt=opt)
-    acc750 = distance_accuracy(targets, preds, dis=750, trainset=opt.trainset,opt=opt)
-    acc200 = distance_accuracy(targets, preds, dis=200, trainset=opt.trainset, opt=opt)
-    acc25 = distance_accuracy(targets, preds, dis=25, trainset=opt.trainset, opt=opt)
-    acc1 = distance_accuracy(targets, preds, dis=1, trainset=opt.trainset, opt=opt)
+    accuracies = []
+    for dis in opt.distances:
 
-    print("Epoch", epoch)
-
-    print("Accuracy2500 is", acc2500)
-    print("Accuracy750 is", acc750)
-    print("Accuracy200 is", acc200)
-    print("Accuracy25 is", acc25)
-    print("Accuracy1 is", acc1)
-
-    wandb.log({"2500 Accuracy" : acc2500})
-    wandb.log({"750 Accuracy" : acc750})
-    wandb.log({"200 Accuracy" : acc200})
-    wandb.log({"25 Accuracy" : acc25})
-    wandb.log({"1 Accuracy" : acc1})
+        acc = distance_accuracy(targets, preds, dis=dis, trainset=opt.trainset, opt=opt)
+        print("Accuracy", dis, "is", acc)
+        wandb.log({opt.testset + " " +  str(dis) + " Accuracy" : acc})
 
 
 def eval_one_epoch(val_dataloader, model, epoch, opt):

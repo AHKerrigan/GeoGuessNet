@@ -61,22 +61,31 @@ class JustResNet(nn.Module):
     def __init__(self, backbone=models.resnet50(pretrained=True), trainset='train'):
         super().__init__()
 
-        '''
         self.n_features = backbone.fc.in_features
         self.backbone = torch.nn.Sequential(*list(backbone.children())[:-2])
 
         self.backbone.avgpool = nn.AdaptiveAvgPool2d(1)
         self.backbone.flatten = nn.Flatten(start_dim=1)
+        
         '''
         self.backbone = ViTModel.from_pretrained("google/vit-base-patch16-224-in21k")
         self.n_features = 768
+        '''
 
 
         if trainset == 'train':
+            print("loading train")
             self.classification1 = nn.Linear(self.n_features, 2967)
+            self.classification2 = nn.Linear(self.n_features, 6505)
+            self.classification3 = nn.Linear(self.n_features, 11570)
         if trainset == 'train1M':
             self.classification1 = nn.Linear(self.n_features, 689)
-
+            self.classification2 = nn.Linear(self.n_features, 689)
+            self.classification3 = nn.Linear(self.n_features, 689)
+        if trainset == 'trainbdd':
+            self.classification1 = nn.Linear(self.n_features, 50)
+            self.classification2 = nn.Linear(self.n_features, 216)
+            self.classification3 = nn.Linear(self.n_features, 521)        
         #self.classification = nn.Sequential(
         #    nn.Linear(2048, 2048//2),
         #    nn.ReLU(True),
@@ -88,11 +97,13 @@ class JustResNet(nn.Module):
     def forward(self, x):
         bs, ch, h, w = x.shape
 
-        x = self.backbone(x).pooler_output
-        x = self.classification1(x)
+        x = self.backbone(x)
+        x1 = self.classification1(x)
+        x2 = self.classification2(x)
+        x3 = self.classification3(x)
 
 
-        return x
+        return x1, x2, x3
 
 if __name__ == "__main__":
 

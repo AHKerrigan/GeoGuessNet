@@ -9,7 +9,6 @@ from PIL import Image as im
 import os
 import torch
 
-import cv2
 import pandas as pd
 
 import numpy as np
@@ -71,74 +70,6 @@ def m16_val_transform():
     ])
     return m16_transform_list    
 
-def get_BDD_train(opt):
-
-    ground_folder  = opt.BDDfolder + '/Ground/train/'
-    class_info = json.load(open("video_data.json"))
-
-    #aerial_folder = '/home/alec/Documents/geolocalization2/BDD100k_Mini/Aerial/train/SanFrancisco/'
-    #ground_folder  = '/home/alec/Documents/geolocalization2/BDD100k_Mini/Ground/train/SanFrancisco/'
-
-    fnames = [] 
-    classes = []
-
-    valid = 0
-    total = 0
-
-    parent = []
-    
-    for vid in sorted(os.listdir(str(ground_folder))):
-        if vid in class_info:
-
-            cls = class_info[vid]['classes']
-            if cls[0] != 0: 
-                continue
-            fnames.append(ground_folder + vid)
-            classes.append(cls)
-            #print(cls)
-            #parent.append(class_info[vid]['classes'][0])
-            #print(class_info[vid]['classes'])
-            valid += 1
-            total += 1
-        else:
-            continue
-        
-        # For small scale testing
-        #if valid >= 1000:
-        #    break
-        #print(class_info[vid]['classes'])
-    
-    return fnames, classes
-
-def get_BDD_val():
-
-    ground_folder  = '/home/alec/Documents/BigDatasets/BDD100k_Big/Ground/val/'
-    class_info = json.load(open("video_data.json"))
-
-    #ground_folder  = '/home/alec/Documents/geolocalization2/BDD100k_Mini/Ground/val/SanFrancisco/'
-
-    fnames = [] 
-    classes = []
-
-    valid = 0
-    total = 0
-    
-    for vid in sorted(os.listdir(str(ground_folder))):
-        if vid in class_info:
-            fnames.append(ground_folder + vid)
-            classes.append(class_info[vid]['classes'])
-            #print(class_info[vid]['classes'])
-            valid += 1
-            total += 1
-        else:
-            continue
-        
-        #if valid >= 1000:
-        #    break
-        #print(class_info[vid]['classes'])
-    print(valid, "videos")
-    return fnames, classes
-
 def get_mp16_train(classfile="mp16_places365_mapping_h3.json", opt=None):
 
     class_info = json.load(open(opt.resources + classfile))
@@ -191,6 +122,52 @@ def get_im2gps3k_test(classfile="im2gps3k_places365.csv", opt=None):
             classes.append([float(row[1]['LAT']), float(row[1]['LON'])])
     
     #print(classes)
+    return fnames, classes
+
+def get_bdd_train(classfile="BDDTrain_places365_mapping_h3.json", opt=None):
+
+    class_info = json.load(open(opt.resources + classfile))
+
+    #print("The classes should have been", class_info['34/8d/9055806529.jpg'])
+    base_folder = opt.BDDfolder + 'train/'
+
+    fnames = []
+    classes = []
+
+    for row in class_info:
+        filename = base_folder + row
+
+        for img in sorted(os.listdir(filename)):
+            if exists(filename + "/" + img):
+                fnames.append(filename + "/" + img)
+                classes.append([int(x) for x in class_info[row]])
+    
+
+    return fnames, classes
+
+def get_bdd_test(classfile="bdd100k_val_places365.csv", opt=None):
+
+    class_info = pd.read_csv(opt.resources + classfile)
+
+    #print("The classes should have been", class_info['34/8d/9055806529.jpg'])
+    base_folder = opt.BDDfolder + 'val/'
+
+    fnames = []
+    classes = []
+
+    for row in class_info.iterrows():
+        filename = base_folder + row[1]['IMG_ID']
+
+        for img in sorted(os.listdir(filename)):
+            if exists(filename + "/" + img):
+                fnames.append(filename + "/" + img)
+                info = img[:-4].split('_')
+                classes.append([float(info[1]), float(info[2])])
+
+                # Just test on the first image of each folder
+                break
+    
+
     return fnames, classes
 
 def read_frames(fname, one_frame=False):
@@ -259,6 +236,11 @@ class M16Dataset(Dataset):
             fnames, classes = get_yfcc35600_test(opt=opt)
         if split == 'im2gps3k':
             fnames, classes = get_im2gps3k_test(opt=opt)
+        if split == 'trainbdd':
+            fnames, classes = get_bdd_train(opt=opt)        
+        if split == 'testbdd':
+            fnames, classes = get_bdd_test(opt=opt)      
+        
 
         temp = list(zip(fnames, classes))
         np.random.shuffle(temp)
@@ -268,7 +250,7 @@ class M16Dataset(Dataset):
         self.data = self.fnames
 
         print("Loaded data, total vids", len(fnames))
-        if self.split == 'train':
+        if self.split in ['train', 'trainbdd']:
             self.transform = m16_transform()
         else:
             self.transform = m16_val_transform()
@@ -290,7 +272,7 @@ class M16Dataset(Dataset):
         vid = self.transform(vid)
 
         #print(self.classes[idx])
-        if self.split in ['train', 'train1M'] :
+        if self.split in ['train', 'train1M', 'trainbdd'] :
             return vid, torch.Tensor(self.classes[idx]).to(torch.int64)
         else:
             return vid, torch.Tensor(self.classes[idx])
@@ -298,6 +280,7 @@ class M16Dataset(Dataset):
     def __len__(self):
         return len(self.data)
 
+import argparse
 if __name__ == "__main__":
     '''
     dataset = BDDDataset(one_frame=True, split='train')
@@ -312,9 +295,15 @@ if __name__ == "__main__":
         plt.imshow(v)
         plt.savefig("testimages/test"+str(i)+'.png')
     '''
-    
-    dataset = M16Dataset(split='train')
-    dataloader = dataloader = torch.utils.data.DataLoader(dataset, batch_size=32, num_workers=0, shuffle=False, drop_last=False)
+
+    parser = argparse.ArgumentParser()
+
+    opt = parser.parse_args()
+    opt.resources = "/home/alec/Documents/BigDatasets/resources/"
+    opt.BDDfolder = "/home/alec/Documents/BigDatasets/BDD100k_Big/Ground/"
+
+    dataset = M16Dataset(split='bddtest', opt=opt)
+    dataloader = torch.utils.data.DataLoader(dataset, batch_size=32, num_workers=0, shuffle=False, drop_last=False)
 
     for i, (img, classes) in enumerate(dataloader):
         print(img)

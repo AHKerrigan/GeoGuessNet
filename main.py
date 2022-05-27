@@ -35,8 +35,8 @@ wandb.save()
 #weights = [1/40619, 1/2063, 1/1147, 1/4391]
 #class_weights = torch.FloatTensor(weights).cuda()
 #criterion = torch.nn.CrossEntropyLoss(weight=class_weights)
-train_dataset = dataloader.M16Dataset(split='train', opt=opt)
-val_dataset = dataloader.M16Dataset(split='im2gps3k', opt=opt)
+train_dataset = dataloader.M16Dataset(split=opt.trainset, opt=opt)
+val_dataset = dataloader.M16Dataset(split=opt.testset, opt=opt)
 
 train_dataloader = torch.utils.data.DataLoader(train_dataset, batch_size=opt.batch_size, num_workers=opt.kernels, shuffle=False, drop_last=False)
 val_dataloader = torch.utils.data.DataLoader(val_dataset, batch_size=opt.batch_size, num_workers=opt.kernels, shuffle=False, drop_last=False)
@@ -47,7 +47,7 @@ model = networks.JustResNet(trainset=opt.trainset)
 
 optimizer = torch.optim.SGD(model.parameters(), lr=opt.lr, momentum=0.9, weight_decay=0.0001)
 
-scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=4, gamma=0.5)
+scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=opt.step_size, gamma=0.5)
 #scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer,T_max=500, 
 #                                                   eta_min=1e-6)
 
