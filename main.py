@@ -6,7 +6,8 @@ import torch.nn as nn
 
 #import network
 import dataloader
-from train_and_eval import train_single_frame, eval_one_epoch, train_images, eval_images
+from train_and_eval import train_images, eval_images, train_images_metric
+
 
 #from torch.utils.tensorboard import SummaryWriter
 import wandb
@@ -65,7 +66,9 @@ for epoch in range(opt.n_epochs):
         #train_one_epoch_temp1(train_dataloader, model, optimizer, opt, epoch, writer)
         #train_one_epoch_temp1(train_dataloader, model, optimizer, opt, epoch, writer)
         #train_single_frame(train_dataloader=train_dataloader, model=model, criterion=criterion, optimizer=optimizer, scheduler=scheduler, opt=opt, epoch=epoch, writer=writer)
-        train_images(train_dataloader=train_dataloader, model=model, criterion=criterion, optimizer=optimizer, scheduler=scheduler, opt=opt, epoch=epoch, val_dataloader=val_dataloader)
+        #train_images(train_dataloader=train_dataloader, model=model, criterion=criterion, optimizer=optimizer, scheduler=scheduler, opt=opt, epoch=epoch, val_dataloader=val_dataloader)
+        train_images_metric(train_dataloader=train_dataloader, model=model, criterion=criterion, optimizer=optimizer, scheduler=scheduler, opt=opt, epoch=epoch, val_dataloader=val_dataloader)
+
     #eval_one_epoch(val_dataloader=val_dataloader, model=model, epoch=epoch, opt=opt, writer=writer)
     torch.save(model.state_dict(), 'weights/' + opt.description + '.pth')
     eval_images(val_dataloader=val_dataloader, model=model, epoch=epoch, opt=opt)

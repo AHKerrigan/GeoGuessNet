@@ -21,17 +21,17 @@ def getopt():
 
     opt.n_epochs = 20
 
-    opt.description = 'ResNet50-BDD F*'
+    opt.description = 'Just Metric Loss'
     opt.archname = 'Just ResNet50'
     opt.evaluate = False
 
     opt.lr = 1e-2
     opt.step_size = 3
 
-    opt.batch_size = 256
-    opt.distances = [50, 10, 1, 0.5, 0.25]
-    opt.trainset = 'trainbdd'
-    opt.testset = 'testbdd'
+    opt.batch_size = 200
+    opt.distances = [2500, 750, 200, 25, 1]
+    opt.trainset = 'train'
+    opt.testset = 'im2gps3k'
     opt.device = torch.device('cuda')
 
     return opt
