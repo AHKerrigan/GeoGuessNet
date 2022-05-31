@@ -199,7 +199,7 @@ def distance_accuracy(targets, preds, dis=2500, set='im2gps3k', trainset='train'
     return correct / total
 
 def eval_images(val_dataloader, model, epoch, opt):
-    return
+    #return
 
     data_iterator = val_dataloader
 

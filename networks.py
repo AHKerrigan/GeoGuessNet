@@ -4,7 +4,8 @@ from torch.nn import TransformerEncoder, TransformerEncoderLayer
 
 from positional_encodings import PositionalEncoding1D
 
-from einops import rearrange
+from einops import rearrange, repeat
+from einops.layers.torch import Rearrange
 
 import torch.nn.functional as F
 import torchvision.models as models
@@ -20,6 +21,78 @@ from geopy.distance import lonlat, distance
 from utilities.detrstuff import nested_tensor_from_tensor_list
 from transformers import ViTModel
 
+def pair(t):
+    return t if isinstance(t, tuple) else (t, t)
+
+# classes
+
+class PreNorm(nn.Module):
+    def __init__(self, dim, fn):
+        super().__init__()
+        self.norm = nn.LayerNorm(dim)
+        self.fn = fn
+    def forward(self, x, **kwargs):
+        return self.fn(self.norm(x), **kwargs)
+
+class FeedForward(nn.Module):
+    def __init__(self, dim, hidden_dim, dropout = 0.):
+        super().__init__()
+        self.net = nn.Sequential(
+            nn.Linear(dim, hidden_dim),
+            nn.GELU(),
+            nn.Dropout(dropout),
+            nn.Linear(hidden_dim, dim),
+            nn.Dropout(dropout)
+        )
+    def forward(self, x):
+        return self.net(x)
+
+class Attention(nn.Module):
+    def __init__(self, dim, heads = 8, dim_head = 64, dropout = 0.):
+        super().__init__()
+        inner_dim = dim_head *  heads
+        project_out = not (heads == 1 and dim_head == dim)
+
+        self.heads = heads
+        self.scale = dim_head ** -0.5
+
+        self.attend = nn.Softmax(dim = -1)
+        self.dropout = nn.Dropout(dropout)
+
+        self.to_qkv = nn.Linear(dim, inner_dim * 3, bias = False)
+
+        self.to_out = nn.Sequential(
+            nn.Linear(inner_dim, dim),
+            nn.Dropout(dropout)
+        ) if project_out else nn.Identity()
+
+    def forward(self, x):
+        qkv = self.to_qkv(x).chunk(3, dim = -1)
+        q, k, v = map(lambda t: rearrange(t, 'b n (h d) -> b h n d', h = self.heads), qkv)
+
+        dots = torch.matmul(q, k.transpose(-1, -2)) * self.scale
+
+        attn = self.attend(dots)
+        attn = self.dropout(attn)
+
+        out = torch.matmul(attn, v)
+        out = rearrange(out, 'b h n d -> b n (h d)')
+        return self.to_out(out)
+
+class Transformer(nn.Module):
+    def __init__(self, dim, depth, heads, dim_head, mlp_dim, dropout = 0.):
+        super().__init__()
+        self.layers = nn.ModuleList([])
+        for _ in range(depth):
+            self.layers.append(nn.ModuleList([
+                PreNorm(dim, Attention(dim, heads = heads, dim_head = dim_head, dropout = dropout)),
+                PreNorm(dim, FeedForward(dim, mlp_dim, dropout = dropout))
+            ]))
+    def forward(self, x):
+        for attn, ff in self.layers:
+            x = attn(x) + x
+            x = ff(x) + x
+        return x
 
 class BasicDETR(nn.Module):
     def __init__(self, n_hier=8):
@@ -229,6 +302,10 @@ class GeoGuess4(nn.Module):
         self.backbone = ViTModel.from_pretrained("google/vit-base-patch16-224-in21k", output_hidden_states=True)
         self.n_features = 768
 
+        self.layernorm1 = nn.LayerNorm(768)
+        self.layernorm2 = nn.LayerNorm(768)
+        self.layernorm3 = nn.LayerNorm(768)
+
         self.hier1encoder = nn.TransformerEncoder(nn.TransformerEncoderLayer(d_model=768, nhead=12, batch_first=True), num_layers=2)
         self.hier2encoder = nn.TransformerEncoder(nn.TransformerEncoderLayer(d_model=768, nhead=12, batch_first=True), num_layers=2)
         self.hier3encoder = nn.TransformerEncoder(nn.TransformerEncoderLayer(d_model=768, nhead=12, batch_first=True), num_layers=2)
@@ -262,14 +339,97 @@ class GeoGuess4(nn.Module):
         
         x = self.backbone(x).hidden_states
 
-        x1 = self.hier1encoder(x[-3])
-        x2 = self.hier2encoder(x[-2])
-        x3 = self.hier3encoder(x[-1])
-        feats = x3[:,0,:]
+        #x1 = self.layernorm1(x[-3])
+        #x2 = self.layernorm2(x[-2]) )
+        #x3 = self.layernorm3(self.hier3encoder(x[-1]))
+        #feats = x3[:,0,:]
 
-        x1 = self.classification1(x1[:,0,:])
-        x2 = self.classification2(x2[:,0,:])
-        x3 = self.classification3(x3[:,0,:])
+        x1 = self.layernorm1(x[-5][:,0])
+        x2 = self.layernorm2(x[-3][:,0])
+        x3 = self.layernorm3(x[-1][:,0])
+
+        x1 = self.classification1(x1)
+        x2 = self.classification2(x2)
+        x3 = self.classification3(x3)
+
+        #print(x1.shape)
+        return x1, x2, x3, x3
+
+class GeoGuess5(nn.Module):
+    def __init__(self, backbone=models.resnet50(pretrained=True), trainset='train'):
+        super().__init__()
+
+ 
+        self.backbone = ViTModel.from_pretrained("google/vit-base-patch16-224-in21k", output_hidden_states=True)
+        self.n_features = 768
+
+        self.layernorm1 = nn.LayerNorm(768)
+        self.layernorm2 = nn.LayerNorm(768)
+        self.layernorm3 = nn.LayerNorm(768)
+
+        self.b1t1 = Transformer(768, 1, 12, 64, 1024)
+        self.b1t2 = Transformer(768, 1, 12, 64, 1024)
+
+        self.b2t1 = Transformer(768, 1, 12, 64, 1024)
+        self.b2t2 = Transformer(768, 1, 12, 64, 1024)
+
+        self.b3t1 = Transformer(768, 1, 12, 64, 1024)
+        self.b3t2 = Transformer(768, 1, 12, 64, 1024)
+        
+
+        if trainset == 'train':
+            self.classification1 = nn.Linear(self.n_features, 2967)
+            self.classification2 = nn.Linear(self.n_features, 6505)
+            self.classification3 = nn.Linear(self.n_features, 11570)
+        if trainset == 'train1M':
+            self.classification1 = nn.Linear(self.n_features, 689)
+            self.classification2 = nn.Linear(self.n_features, 689)
+            self.classification3 = nn.Linear(self.n_features, 689)
+        if trainset == 'bddtrain':
+            self.classification1 = nn.Linear(self.n_features, 49)
+            self.classification2 = nn.Linear(self.n_features, 215)
+            self.classification3 = nn.Linear(self.n_features, 520)            
+        
+
+        #self.classification = nn.Sequential(
+        #    nn.Linear(2048, 2048//2),
+        #    nn.ReLU(True),
+        #    nn.Dropout(p=0.1),
+        #    nn.Linear(2048//2, 686)
+        #)
+        #self.classification = nn.Linear(2048, 3298)
+
+    def forward(self, x):
+        bs, ch, h, w = x.shape
+
+        
+        x = self.backbone(x).hidden_states
+
+        #x1 = self.layernorm1(x[-3])
+        #x2 = self.layernorm2(x[-2]) )
+        #x3 = self.layernorm3(self.hier3encoder(x[-1]))
+        #feats = x3[:,0,:]
+
+        # Course Branch
+        x1 = self.layernorm1(x[-5][:,0])
+        x1 = self.b1t1(x1)
+        x1 = self.b1t2(x1)
+
+        # Medium Branch
+        x2 = self.layernorm2(x[-3][:,0])
+        x2 = self.b2t1(x2)
+        x2 = self.b2t2(x2)
+
+        # Fine Branch
+        x3 = self.layernorm3(x[-1][:,0])
+        x3 = self.b3t1(x3)
+        x3 = self.b3t2(x3)
+
+        x1 = self.classification1(x1)
+        x2 = self.classification2(x2)
+        x3 = self.classification3(x3)
+
+        #print(x1.shape)
         return x1, x2, x3, x3
 
 if __name__ == "__main__":

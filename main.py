@@ -44,7 +44,7 @@ val_dataloader = torch.utils.data.DataLoader(val_dataset, batch_size=opt.batch_s
 
 criterion = torch.nn.CrossEntropyLoss()
 
-model = networks.JustResNet(trainset=opt.trainset)
+model = networks.GeoGuess4(trainset=opt.trainset)
 
 optimizer = torch.optim.SGD(model.parameters(), lr=opt.lr, momentum=0.9, weight_decay=0.0001)
 
@@ -66,8 +66,8 @@ for epoch in range(opt.n_epochs):
         #train_one_epoch_temp1(train_dataloader, model, optimizer, opt, epoch, writer)
         #train_one_epoch_temp1(train_dataloader, model, optimizer, opt, epoch, writer)
         #train_single_frame(train_dataloader=train_dataloader, model=model, criterion=criterion, optimizer=optimizer, scheduler=scheduler, opt=opt, epoch=epoch, writer=writer)
-        #train_images(train_dataloader=train_dataloader, model=model, criterion=criterion, optimizer=optimizer, scheduler=scheduler, opt=opt, epoch=epoch, val_dataloader=val_dataloader)
-        train_images_metric(train_dataloader=train_dataloader, model=model, criterion=criterion, optimizer=optimizer, scheduler=scheduler, opt=opt, epoch=epoch, val_dataloader=val_dataloader)
+        train_images(train_dataloader=train_dataloader, model=model, criterion=criterion, optimizer=optimizer, scheduler=scheduler, opt=opt, epoch=epoch, val_dataloader=val_dataloader)
+        #train_images_metric(train_dataloader=train_dataloader, model=model, criterion=criterion, optimizer=optimizer, scheduler=scheduler, opt=opt, epoch=epoch, val_dataloader=val_dataloader)
 
     #eval_one_epoch(val_dataloader=val_dataloader, model=model, epoch=epoch, opt=opt, writer=writer)
     torch.save(model.state_dict(), 'weights/' + opt.description + '.pth')
