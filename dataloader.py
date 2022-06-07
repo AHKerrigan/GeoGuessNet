@@ -30,7 +30,8 @@ from collections import Counter
 
 import matplotlib.pyplot as plt
 from os.path import exists 
-
+from tqdm import tqdm
+import pickle
 
 #from transformers import ViTModel, ViTConfig
 
@@ -84,7 +85,7 @@ def get_mp16_train(classfile="mp16_places365_mapping_h3.json", gpsfile="mp16_pla
 
     for row in gps_info.iterrows():
         filename = base_folder + row[1]['IMG_ID']
-        if row[1]['IMG_ID'] in class_info:
+        if row[1]['IMG_ID'] in class_info and exists(filename):
             fnames.append(filename)
             classes.append([int(x) for x in class_info[row[1]['IMG_ID']]])        
             gps.append([float(row[1]['LAT']), float(row[1]['LON'])])
@@ -283,34 +284,72 @@ class M16Dataset(Dataset):
     def __len__(self):
         return len(self.data)
 
+class M16TripletDataset(Dataset):
+
+    def __init__(self, crop_size = 112, split='traintriplet', opt=None):
+
+        np.random.seed(0)
+        
+        self.split = split 
+        dict = pickle.load(open(opt.resources + '3MTriplets.p', "rb"))
+        self.data = pd.DataFrame(dict)
+        self.data.to_csv("3MTriplets.csv")
+        
+        self.basefolder = opt.mp16folder
+
+        if self.split in ['traintriplet', 'trainbddtriplet']:
+            self.transform = m16_transform()
+        else:
+            self.transform = m16_val_transform()
+
+    def __getitem__(self, idx):
+
+        #print(self.data[0])
+        row = self.data.iloc[idx]
+
+        '''
+        sample = self.data[idx]
+        coords = []
+        if not self.one_frame:
+            vid, coords = read_frames(sample)
+            vid = vid[:15]
+            coords = coords[:15]
+        else:
+            vid, coords = read_frames(sample, self.one_frame)
+        vid = im.open(sample).convert('RGB')
+        vid = self.transform(vid)
+
+        #print(self.classes[idx])
+        if self.split in ['train', 'train1M', 'trainbdd'] :
+            return vid, torch.Tensor(self.classes[idx]).to(torch.int64), torch.Tensor(self.gps[idx])
+        else:
+            return vid, torch.Tensor(self.gps[idx])
+        '''
+
+        anchor = im.open(self.basefolder + row['Anchor']).convert('RGB')
+        positive = im.open(self.basefolder + row['Positive']).convert('RGB')
+        negative = im.open(self.basefolder + row['Negative']).convert('RGB')
+
+        #if idx % 32 == 0:
+        #    print(self.basefolder + row['Anchor'])
+        #    print(self.basefolder + row['Positive'])
+        #    print(self.basefolder + row['Negative'])
+        #    print(row['ClassA'], row['ClassP'], row['ClassN'])
+
+
+        anchor = self.transform(anchor)
+        positive = self.transform(positive)
+        negative = self.transform(negative)
+
+        vids = torch.stack((anchor, positive, negative))
+
+        classes = [row['ClassA'], row['ClassP'], row['ClassN']]
+
+        return vids, row['#PosHiers'], torch.Tensor(classes).to(torch.int64)
+
+
+    def __len__(self):
+        return len(self.data.index)
+
+
 import argparse
-if __name__ == "__main__":
-    '''
-    dataset = BDDDataset(one_frame=True, split='train')
-    dataloader = torch.utils.data.DataLoader(dataset, batch_size=32, num_workers=2, shuffle=False, drop_last=False)
-
-
-    for i, (vid, coords, classes) in enumerate(dataloader):
-        v = rearrange(vid, 'bs c f h w -> (bs f) h w c')[0].numpy()
-        v = (v * np.array([0.229, 0.224, 0.225]) + np.array([[0.485, 0.456, 0.406]]))
-
-        #print(v)
-        plt.imshow(v)
-        plt.savefig("testimages/test"+str(i)+'.png')
-    '''
-
-    parser = argparse.ArgumentParser()
-
-    opt = parser.parse_args()
-    opt.resources = "/home/alec/Documents/BigDatasets/resources/"
-    opt.BDDfolder = "/home/alec/Documents/BigDatasets/BDD100k_Big/Ground/"
-    opt.mp16folder = "/home/alec/Documents/BigDatasets/mp16/"
-
-    dataset = M16Dataset(split='train', opt=opt)
-    dataloader = torch.utils.data.DataLoader(dataset, batch_size=32, num_workers=0, shuffle=False, drop_last=False)
-
-    for i, (img, classes, gps) in enumerate(dataloader):
-        print(img)
-        print(classes)
-        print(gps)
-        break

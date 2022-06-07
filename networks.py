@@ -21,6 +21,8 @@ from geopy.distance import lonlat, distance
 from utilities.detrstuff import nested_tensor_from_tensor_list
 from transformers import ViTModel
 
+import copy
+
 def pair(t):
     return t if isinstance(t, tuple) else (t, t)
 
@@ -145,7 +147,7 @@ class JustResNet(nn.Module):
         self.n_features = 768
         '''
 
-        if trainset == 'train':
+        if trainset in ['train', 'traintriplet']:
             self.classification1 = nn.Linear(self.n_features, 2967)
             self.classification2 = nn.Linear(self.n_features, 6505)
             self.classification3 = nn.Linear(self.n_features, 11570)
@@ -177,7 +179,7 @@ class JustResNet(nn.Module):
         x2 = self.classification2(x)
         x3 = self.classification3(x)
 
-        return x1, x2, x3
+        return x1, x2, x3, 0
 
 class GeoGuess1(nn.Module):
     def __init__(self, backbone=models.resnet101(pretrained=True), trainset='train'):
@@ -411,17 +413,17 @@ class GeoGuess5(nn.Module):
         #feats = x3[:,0,:]
 
         # Course Branch
-        x1 = self.layernorm1(x[-5][:,0])
+        x1 = x[-5][:,0]
         x1 = self.b1t1(x1)
         x1 = self.b1t2(x1)
 
         # Medium Branch
-        x2 = self.layernorm2(x[-3][:,0])
+        x2 = x[-3][:,0]
         x2 = self.b2t1(x2)
         x2 = self.b2t2(x2)
 
         # Fine Branch
-        x3 = self.layernorm3(x[-1][:,0])
+        x3 = x[-1][:,0]
         x3 = self.b3t1(x3)
         x3 = self.b3t2(x3)
 
@@ -432,9 +434,65 @@ class GeoGuess5(nn.Module):
         #print(x1.shape)
         return x1, x2, x3, x3
 
+class ThreeWay(nn.Module):
+    def __init__(self, backbone=models.resnet50(pretrained=True), trainset='train'):
+        super().__init__()
+
+        self.n_features = backbone.fc.in_features
+
+        self.coarsebranch = copy.deepcopy(backbone.layer4)
+        self.mediumbranch = copy.deepcopy(backbone.layer4)
+        self.finebranch = copy.deepcopy(backbone.layer4)
+        self.backbone = nn.Sequential(*list(models.resnet50(pretrained=True).children())[:-3])
+
+        self.avgpool = nn.AdaptiveAvgPool2d(1)
+        self.flatten = nn.Flatten(start_dim=1)
+
+
+        ''''
+        self.backbone = ViTModel.from_pretrained("google/vit-base-patch16-224-in21k")
+        self.n_features = 768
+        '''
+
+        if trainset in ['train', 'traintriplet']:
+            self.classification1 = nn.Linear(self.n_features, 2967)
+            self.classification2 = nn.Linear(self.n_features, 6505)
+            self.classification3 = nn.Linear(self.n_features, 11570)
+        if trainset == 'train1M':
+            self.classification = nn.Linear(self.n_features * 3, 689)
+        if trainset == 'bddtrain':
+            self.classification = nn.Linear(self.n_features * 3, 520)            
+        
+
+        #self.classification = nn.Sequential(
+        #    nn.Linear(2048, 2048//2),
+        #    nn.ReLU(True),
+        #    nn.Dropout(p=0.1),
+        #    nn.Linear(2048//2, 686)
+        #)
+        #self.classification = nn.Linear(2048, 3298)
+
+    def forward(self, x, return_feats = False):
+        bs, ch, h, w = x.shape
+
+        x = self.backbone(x)
+        x1 = self.coarsebranch(x)
+        x2 = self.mediumbranch(x)
+        x3 = self.finebranch(x)
+
+        x1 = self.flatten(self.avgpool(x1))
+        x2 = self.flatten(self.avgpool(x2))
+        x3 = self.flatten(self.avgpool(x3))
+
+        fullfeatures = torch.cat((x1, x2, x3), dim=1)
+        cls = self.classification(fullfeatures)
+
+        return x3, x3, x3, cls
+
+
 if __name__ == "__main__":
 
-    image = torch.rand((1,3, 224,224))
+    image = torch.rand((84,3,224,224))
 
     '''
     feature_extractor = DetrFeatureExtractor.from_pretrained("facebook/detr-resnet-50")
@@ -446,9 +504,31 @@ if __name__ == "__main__":
     print(outputs.last_hidden_state.shape)
     '''
 
-    model = GeoGuess4()
-    x1, x2, x3, x3 = model(image)
-    print(x1.shape)
+    import copy
+    from torchsummary import summary
+
+
+    model = models.resnet50(pretrained=True)
+
+    new_layer = nn.Sequential(*list(model.children())[-3:-2])
+    #finebranch = copy.deepcopy(model.layer4)
+    #model = ThreeWay()
+    #summary(nn.Sequential(*list(model.children())[:-3]))
+    #new_model = nn.Sequential(*list(model.children())[:-3],
+    #                            finebranch)
+    summary(new_layer)
+
+    x = model(image)
+    #print(layer1copy)
+
+
+    #_ = model.to('cuda')
+    #image = image.to('cuda')
+
+
+
+    #x1, x2, x3, cls = model(image)
+    #print(x1.shape, x2.shape, x3.shape, cls.shape)
 
 
     

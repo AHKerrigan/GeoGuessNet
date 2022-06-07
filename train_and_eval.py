@@ -97,7 +97,7 @@ def train_images(train_dataloader, model, criterion, optimizer, scheduler, opt, 
             eval_images(val_dataloader, model, epoch, opt)
     print("The loss of epoch", epoch, "was ", np.mean(losses))
 
-def train_images_metric(train_dataloader, model, criterion, optimizer, scheduler, opt, epoch, val_dataloader=None):
+def train_metric_images(train_dataloader, model, criterion, optimizer, scheduler, opt, epoch, val_dataloader=None):
 
     batch_times, model_times, losses = [], [], []
     accuracy_regressor, accuracy_classifier = [], []
@@ -110,48 +110,27 @@ def train_images_metric(train_dataloader, model, criterion, optimizer, scheduler
     dataset_size = 0
 
 
-    val_cycle = (len(data_iterator.dataset.data) // (opt.batch_size * 164))
+    val_cycle = (len(data_iterator.dataset.data) // (opt.batch_size * 164)) // 3
     print("Outputting loss every", val_cycle, "batches")
     print("Validating every", val_cycle*5, "batches")
     print("Starting Epoch", epoch)
 
     bar = tqdm(enumerate(data_iterator), total=len(data_iterator))
 
-    for i ,(imgs, classes, gps) in bar:
+    for i ,(imgs, validhiers, classes) in bar:
 
         batch_size = imgs.shape[0]
-        labels1 = classes[:,0]
-        labels2 = classes[:,1]
-        labels3 = classes[:,2]
-        #labels1 = rearrange(labels1, 'bs c -> (bs c)')
 
-        labels1 = labels1.to(opt.device)
-        labels2 = labels2.to(opt.device)
-        labels3 = labels3.to(opt.device)
-
-
+        imgs = rearrange(imgs, 'bs trips ch h w -> (bs trips) ch h w ')
         imgs = imgs.to(opt.device)
 
+        classes = rearrange(classes, 'bs trips -> (bs trips)')
+        classes = classes.to(opt.device)
+       
+        out1, out2, out3, cls = model(imgs)
         optimizer.zero_grad()
-        outs1, outs2, outs3, feats = model(imgs)
-
-        torch.set_printoptions(edgeitems=30)
-
-        loss1 = 0
-        loss2 = 0
-        loss3 = 0
-
-        loss1 = criterion(outs1, labels1)
-        loss2 = criterion(outs2, labels2)
-        loss3 = criterion(outs3, labels3)
-
-
-        gpsloss = gps_loss(feats, feats.flip(0), gps, gps.flip(0))
-
-        #print("Losses are ", loss1.item(), loss2.item(), loss3.item(), gpsloss.item())
-
-        loss = loss1 + loss2 + loss3 + gpsloss
-
+        
+        loss = criterion(cls, classes)
         loss.backward()
 
         optimizer.step()     
@@ -168,17 +147,17 @@ def train_images_metric(train_dataloader, model, criterion, optimizer, scheduler
                         LR=optimizer.param_groups[0]['lr'])
         
         if i % val_cycle == 0:
-            if opt.trainset == 'train':
-                wandb.log({"Training Loss" : loss.item()})
-            else:
-                wandb.log({opt.trainset + " Training Loss" : loss.item()})
+            wandb.log({opt.trainset + " Classification Loss" : loss.item()})
+            #wandb.log({opt.trainset + " Coarse Margin Loss" : coarseloss.item()})
+            #wandb.log({opt.trainset + " Medium Margin Loss" : mediumloss.item()})
+            #wandb.log({opt.trainset + " Fine MarginLoss Loss" : fineloss.item()})
             #print("interation", i, "of", len(data_iterator))
         if val_dataloader != None and i % (val_cycle * 5) == 0:
             eval_images(val_dataloader, model, epoch, opt)
     print("The loss of epoch", epoch, "was ", np.mean(losses))
     
 def distance_accuracy(targets, preds, dis=2500, set='im2gps3k', trainset='train', opt=None):
-    if trainset == 'train':
+    if trainset in ['train', 'traintriplet']:
         coarse_gps = pd.read_csv(opt.resources + "cells_50_1000_images_4249548.csv") 
     if trainset == 'train1M':
         coarse_gps = pd.read_csv(opt.resources + "cells_50_1000_images_1M.csv")
@@ -214,11 +193,11 @@ def eval_images(val_dataloader, model, epoch, opt):
 
         imgs = imgs.to(opt.device)
         with torch.no_grad():
-            outs1, outs2, outs3, _ = model(imgs)
-        outs = torch.argmax(outs3, dim=-1).detach().cpu().numpy()
+            outs1, outs2, outs3, cls = model(imgs)
+        cls = torch.argmax(cls, dim=-1).detach().cpu().numpy()
 
         targets.append(labels)
-        preds.append(outs)
+        preds.append(cls)
 
     preds = np.concatenate(preds, axis=0)
     targets = np.concatenate(targets, axis=0)
