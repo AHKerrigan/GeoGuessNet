@@ -22,6 +22,7 @@ from utilities.detrstuff import nested_tensor_from_tensor_list
 from transformers import ViTModel
 
 import copy
+import pickle
 
 def pair(t):
     return t if isinstance(t, tuple) else (t, t)
@@ -158,8 +159,20 @@ class JustResNet(nn.Module):
         if trainset == 'bddtrain':
             self.classification1 = nn.Linear(self.n_features, 49)
             self.classification2 = nn.Linear(self.n_features, 215)
-            self.classification3 = nn.Linear(self.n_features, 520)            
+            self.classification3 = nn.Linear(self.n_features, 520)  
+
+        self.scene1 = nn.Linear(self.n_features, 3)  
+        self.scene2 = nn.Linear(self.n_features, 16)
+        self.scene3 = nn.Linear(self.n_features, 365)        
         
+
+        maps = pickle.load(open("/home/alec/Documents/BigDatasets/resources/class_map.p", "rb"))
+
+        self.coarse2medium = maps[0]
+        self.medium2fine = maps[1]
+
+        self.medium2fine[929] = 0
+        self.medium2fine[3050] = 0
 
         #self.classification = nn.Sequential(
         #    nn.Linear(2048, 2048//2),
@@ -169,17 +182,24 @@ class JustResNet(nn.Module):
         #)
         #self.classification = nn.Linear(2048, 3298)
 
-    def forward(self, x):
+    def forward(self, x, evaluate=False):
         bs, ch, h, w = x.shape
 
         
         x = self.backbone(x)
-        #x = self.backbone(x)
+
         x1 = self.classification1(x)
         x2 = self.classification2(x)
         x3 = self.classification3(x)
 
-        return x1, x2, x3, 0
+        s1 = self.scene1(x)
+        s2 = self.scene2(x)
+        s3 = self.scene3(x)
+        
+        if not evaluate:
+            return x1, x2, x3, s1, s2, s3
+        else:
+            return x1, x2, x3
 
 class GeoGuess1(nn.Module):
     def __init__(self, backbone=models.resnet101(pretrained=True), trainset='train'):
@@ -504,22 +524,11 @@ if __name__ == "__main__":
     print(outputs.last_hidden_state.shape)
     '''
 
-    import copy
-    from torchsummary import summary
+    model = JustResNet()
+    x1, x2, x3, x3 = model(image)
 
+    print(x3.shape)
 
-    model = models.resnet50(pretrained=True)
-
-    new_layer = nn.Sequential(*list(model.children())[-3:-2])
-    #finebranch = copy.deepcopy(model.layer4)
-    #model = ThreeWay()
-    #summary(nn.Sequential(*list(model.children())[:-3]))
-    #new_model = nn.Sequential(*list(model.children())[:-3],
-    #                            finebranch)
-    summary(new_layer)
-
-    x = model(image)
-    #print(layer1copy)
 
 
     #_ = model.to('cuda')

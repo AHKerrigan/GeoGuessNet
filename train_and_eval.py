@@ -42,9 +42,11 @@ def train_images(train_dataloader, model, criterion, optimizer, scheduler, opt, 
 
     bar = tqdm(enumerate(data_iterator), total=len(data_iterator))
 
-    for i ,(imgs, classes, gps) in bar:
+    for i ,(imgs, classes, scenes, gps) in bar:
 
         batch_size = imgs.shape[0]
+
+        ############## Geolocalization labels  ##############
         labels1 = classes[:,0]
         labels2 = classes[:,1]
         labels3 = classes[:,2]
@@ -54,11 +56,24 @@ def train_images(train_dataloader, model, criterion, optimizer, scheduler, opt, 
         labels2 = labels2.to(opt.device)
         labels3 = labels3.to(opt.device)
 
+        ##############    Scene labels     ##############
+        scenelabels1 = scenes[:,0]
+        scenelabels2 = scenes[:,1]
+        scenelabels3 = scenes[:,2]
+
+        scenelabels1 = scenelabels1.to(opt.device)
+        scenelabels2 = scenelabels2.to(opt.device)
+        scenelabels3 = scenelabels3.to(opt.device)
 
         imgs = imgs.to(opt.device)
 
         optimizer.zero_grad()
-        outs1, outs2, outs3, _ = model(imgs)
+        
+        ##############  Get Outputs ##############
+        if opt.scene:
+            outs1, outs2, outs3, scene1, scene2, scene3 = model(imgs)
+        else:
+            outs1, outs2, outs3 = model(imgs)
 
         torch.set_printoptions(edgeitems=30)
 
@@ -71,6 +86,19 @@ def train_images(train_dataloader, model, criterion, optimizer, scheduler, opt, 
         loss3 = criterion(outs3, labels3)
 
         loss = loss1 + loss2 + loss3
+
+        if opt.scene:
+            sceneloss1 = 0
+            sceneloss2 = 0
+            sceneloss3 = 0
+
+            sceneloss1 = criterion(scene1, scenelabels1)
+            sceneloss2 = criterion(scene2, scenelabels2)
+            sceneloss3 = criterion(scene3, scenelabels3)
+
+            sceneloss = sceneloss1 + sceneloss2 + sceneloss3
+
+            loss += sceneloss
 
         loss.backward()
 
@@ -94,7 +122,8 @@ def train_images(train_dataloader, model, criterion, optimizer, scheduler, opt, 
                 wandb.log({opt.trainset + " Training Loss" : loss.item()})
             #print("interation", i, "of", len(data_iterator))
         if val_dataloader != None and i % (val_cycle * 5) == 0:
-            eval_images(val_dataloader, model, epoch, opt)
+            eval_images_weighted(val_dataloader=val_dataloader, model=model, epoch=epoch, opt=opt)
+            #eval_images(val_dataloader, model, epoch, opt)
     print("The loss of epoch", epoch, "was ", np.mean(losses))
 
 def train_metric_images(train_dataloader, model, criterion, optimizer, scheduler, opt, epoch, val_dataloader=None):
@@ -153,7 +182,7 @@ def train_metric_images(train_dataloader, model, criterion, optimizer, scheduler
             #wandb.log({opt.trainset + " Fine MarginLoss Loss" : fineloss.item()})
             #print("interation", i, "of", len(data_iterator))
         if val_dataloader != None and i % (val_cycle * 5) == 0:
-            eval_images(val_dataloader, model, epoch, opt)
+            eval_images_weighted(val_dataloader=val_dataloader, model=model, epoch=epoch, opt=opt)
     print("The loss of epoch", epoch, "was ", np.mean(losses))
     
 def distance_accuracy(targets, preds, dis=2500, set='im2gps3k', trainset='train', opt=None):
@@ -193,7 +222,7 @@ def eval_images(val_dataloader, model, epoch, opt):
 
         imgs = imgs.to(opt.device)
         with torch.no_grad():
-            outs1, outs2, outs3, cls = model(imgs)
+            outs1, outs2, outs3 = model(imgs, evaluate=True)
         cls = torch.argmax(cls, dim=-1).detach().cpu().numpy()
 
         targets.append(labels)
@@ -220,7 +249,8 @@ def eval_images(val_dataloader, model, epoch, opt):
             wandb.log({opt.testset + " " +  str(dis) + " Accuracy" : acc})
 
 
-def eval_one_epoch(val_dataloader, model, epoch, opt):
+def eval_images_weighted(val_dataloader, model, epoch, opt):
+    #return
 
     data_iterator = val_dataloader
 
@@ -228,25 +258,56 @@ def eval_one_epoch(val_dataloader, model, epoch, opt):
 
     preds = []
     targets = []
-    for i, (vid, coords, classes) in bar:
 
-        labels = classes[:,0].cpu().numpy()
+    for i, (imgs, classes) in bar:
 
-        vid = vid.to(opt.device)[:,:,0,:,:]
-        outs, _ = model(vid)
-        outs = torch.argmax(outs, dim=-1).detach().cpu().numpy()
+        labels = classes.cpu().numpy()
+
+        imgs = imgs.to(opt.device)
+        with torch.no_grad():
+            outs1, outs2, outs3 = model(imgs, evaluate=True)
+
+        outs1 = F.softmax(outs1, dim=1)
+        outs2= F.softmax(outs2, dim=1)
+        outs3 = F.softmax(outs3, dim=1)
+
+        coarseweights = torch.ones(outs2.shape).cuda()
+        mediumweights = torch.ones(outs3.shape).cuda()
+
+        for i in range(outs2.shape[1]):
+            coarseweights[:,i] = outs1[:,val_dataloader.dataset.coarse2medium[i]]
+
+        outs2 = outs2 * coarseweights
+
+
+        for i in range(outs3.shape[1]):
+            mediumweights[:,i] = outs2[:,val_dataloader.dataset.medium2fine[i]]
+        outs3 = outs3 * mediumweights
+
+        outs3 = torch.argmax(outs3, dim=-1).detach().cpu().numpy()
 
         targets.append(labels)
-        preds.append(outs)
+        preds.append(outs3)
 
     preds = np.concatenate(preds, axis=0)
     targets = np.concatenate(targets, axis=0)
 
-   # print(targets, preds)
-    print("Epoch", epoch)
-    print("Macro F1 Score is", f1_score(targets, preds, average='macro'))
-    print("Weighted F1 Score is", f1_score(targets, preds, average='weighted'))
-    print("Accuracy is", accuracy_score(targets, preds))
+    '''
+    macrof1 = f1_score(targets, preds, average='macro')
+    weightedf1 = f1_score(targets, preds, average='weighted')
+    accuracy =  accuracy_score(targets, preds)
+    '''
+    #np.set_printoptions(precision=15)
+    #print(targets)
+    accuracies = []
+    for dis in opt.distances:
+
+        acc = distance_accuracy(targets, preds, dis=dis, trainset=opt.trainset, opt=opt)
+        print("Accuracy", dis, "is", acc)
+        if opt.testset == 'im2gps3k':
+            wandb.log({ str(dis) + " Accuracy" : acc})
+        else:
+            wandb.log({opt.testset + " " +  str(dis) + " Accuracy" : acc})
 
 def gps_loss(x_feats, y_feats, x_gps, y_gps):
     x_gps = x_gps.cpu().numpy()

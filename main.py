@@ -6,7 +6,7 @@ import torch.nn as nn
 
 #import network
 import dataloader
-from train_and_eval import train_images, eval_images, train_metric_images
+from train_and_eval import eval_images_weighted, train_images, eval_images, train_metric_images, eval_images_weighted
 
 
 #from torch.utils.tensorboard import SummaryWriter
@@ -36,7 +36,7 @@ wandb.save()
 #weights = [1/40619, 1/2063, 1/1147, 1/4391]
 #class_weights = torch.FloatTensor(weights).cuda()
 #criterion = torch.nn.CrossEntropyLoss(weight=class_weights)
-train_dataset = dataloader.M16TripletDataset(split=opt.trainset, opt=opt)
+train_dataset = dataloader.M16Dataset(split=opt.trainset, opt=opt)
 val_dataset = dataloader.M16Dataset(split=opt.testset, opt=opt)
 
 train_dataloader = torch.utils.data.DataLoader(train_dataset, batch_size=opt.batch_size, num_workers=opt.kernels, shuffle=False, drop_last=False)
@@ -44,7 +44,7 @@ val_dataloader = torch.utils.data.DataLoader(val_dataset, batch_size=opt.batch_s
 
 criterion = torch.nn.CrossEntropyLoss()
 
-model = networks.ThreeWay(trainset=opt.trainset)
+model = networks.JustResNet(trainset=opt.trainset)
 
 optimizer = torch.optim.SGD(model.parameters(), lr=opt.lr, momentum=0.9, weight_decay=0.0001)
 
@@ -66,12 +66,13 @@ for epoch in range(opt.n_epochs):
         #train_one_epoch_temp1(train_dataloader, model, optimizer, opt, epoch, writer)
         #train_one_epoch_temp1(train_dataloader, model, optimizer, opt, epoch, writer)
         #train_single_frame(train_dataloader=train_dataloader, model=model, criterion=criterion, optimizer=optimizer, scheduler=scheduler, opt=opt, epoch=epoch, writer=writer)
-        #train_images(train_dataloader=train_dataloader, model=model, criterion=criterion, optimizer=optimizer, scheduler=scheduler, opt=opt, epoch=epoch, val_dataloader=val_dataloader)
-        train_metric_images(train_dataloader=train_dataloader, model=model, criterion=criterion, optimizer=optimizer, scheduler=scheduler, opt=opt, epoch=epoch, val_dataloader=val_dataloader)
+        train_images(train_dataloader=train_dataloader, model=model, criterion=criterion, optimizer=optimizer, scheduler=scheduler, opt=opt, epoch=epoch, val_dataloader=val_dataloader)
+        #train_metric_images(train_dataloader=train_dataloader, model=model, criterion=criterion, optimizer=optimizer, scheduler=scheduler, opt=opt, epoch=epoch, val_dataloader=val_dataloader)
 
     #eval_one_epoch(val_dataloader=val_dataloader, model=model, epoch=epoch, opt=opt, writer=writer)
     torch.save(model.state_dict(), 'weights/' + opt.description + '.pth')
-    eval_images(val_dataloader=val_dataloader, model=model, epoch=epoch, opt=opt)
+    #eval_images(val_dataloader=val_dataloader, model=model, epoch=epoch, opt=opt)
+    eval_images_weighted(val_dataloader=val_dataloader, model=model, epoch=epoch, opt=opt)
     scheduler.step()
     
     

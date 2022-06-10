@@ -81,19 +81,21 @@ def get_mp16_train(classfile="mp16_places365_mapping_h3.json", gpsfile="mp16_pla
 
     fnames = []
     classes = []
+    scenes = []
     gps = []
 
-    for row in gps_info.iterrows():
+    for row in tqdm(gps_info.iterrows()):
         filename = base_folder + row[1]['IMG_ID']
         if row[1]['IMG_ID'] in class_info and exists(filename):
             fnames.append(filename)
-            classes.append([int(x) for x in class_info[row[1]['IMG_ID']]])        
+            classes.append([int(x) for x in class_info[row[1]['IMG_ID']]])
+            scenes.append([row[1]['S3_Label'], row[1]['S16_Label'], row[1]['S365_Label']])        
             gps.append([float(row[1]['LAT']), float(row[1]['LON'])])
     
 
-    return fnames, classes, gps
+    return fnames, classes, scenes, gps
 
-def get_yfcc35600_test(classfile="yfcc_25600_places365_mapping_h3.json", opt=None):
+def get_yfcc25600_test(classfile="yfcc_25600_places365_mapping_h3.json", opt=None):
 
     class_info = json.load(open(opt.resourcse + classfile))
     base_folder = opt.yfcc25600folder
@@ -108,7 +110,7 @@ def get_yfcc35600_test(classfile="yfcc_25600_places365_mapping_h3.json", opt=Non
             classes.append([int(x) for x in class_info[row]])
     
     #print(classes)
-    return fnames, classes
+    return fnames, classes, classes, classes
 
 def get_im2gps3k_test(classfile="im2gps3k_places365.csv", opt=None):
 
@@ -126,7 +128,7 @@ def get_im2gps3k_test(classfile="im2gps3k_places365.csv", opt=None):
             classes.append([float(row[1]['LAT']), float(row[1]['LON'])])
     
     #print(classes)
-    return fnames, classes, classes
+    return fnames, classes, classes, classes
 
 def get_bdd_train(classfile="BDDTrain_places365_mapping_h3.json", opt=None):
 
@@ -147,7 +149,7 @@ def get_bdd_train(classfile="BDDTrain_places365_mapping_h3.json", opt=None):
                 classes.append([int(x) for x in class_info[row]])
     
 
-    return fnames, classes
+    return fnames, classes, classes, classes
 
 def get_bdd_test(classfile="bdd100k_val_places365.csv", opt=None):
 
@@ -233,23 +235,31 @@ class M16Dataset(Dataset):
         
         self.split = split 
         if split == 'train':
-            fnames, classes, gps = get_mp16_train(opt=opt)
+            fnames, classes, scenes, gps = get_mp16_train(opt=opt)
         if split == 'train1M':
             fnames, classes = get_mp16_train(classfile="mp16_places365_1M_mapping_h3.json", opt=opt)            
         if split == 'yfcc25600':
-            fnames, classes = get_yfcc35600_test(opt=opt)
+            fnames, classes = get_yfcc25600_test(opt=opt)
         if split == 'im2gps3k':
-            fnames, classes, gps = get_im2gps3k_test(opt=opt)
+            fnames, classes, scenes, gps = get_im2gps3k_test(opt=opt)
         if split == 'trainbdd':
             fnames, classes = get_bdd_train(opt=opt)        
         if split == 'testbdd':
             fnames, classes = get_bdd_test(opt=opt)      
         
+        if opt.hier_eval:
+            if opt.trainset == 'train':
+                maps = pickle.load(open(opt.resources+"class_map.p", "rb"))
+                self.coarse2medium = maps[0]
+                self.medium2fine = maps[1]
 
-        temp = list(zip(fnames, classes, gps))
+                self.medium2fine[929] = 0
+                self.medium2fine[3050] = 0
+        
+        temp = list(zip(fnames, classes, scenes, gps))
         np.random.shuffle(temp)
-        self.fnames, self.classes, self.gps = zip(*temp)
-        self.fnames, self.classes, self.gps = list(self.fnames), list(self.classes), list(self.gps)
+        self.fnames, self.classes, self.scenes, self.gps = zip(*temp)
+        self.fnames, self.classes, self.scenes, self.gps = list(self.fnames), list(self.classes), list(self.scenes), list(self.gps)
 
         self.data = self.fnames
 
@@ -277,7 +287,7 @@ class M16Dataset(Dataset):
 
         #print(self.classes[idx])
         if self.split in ['train', 'train1M', 'trainbdd'] :
-            return vid, torch.Tensor(self.classes[idx]).to(torch.int64), torch.Tensor(self.gps[idx])
+            return vid, torch.Tensor(self.classes[idx]).to(torch.int64), torch.Tensor(self.scenes[idx]).to(torch.int64), torch.Tensor(self.gps[idx])
         else:
             return vid, torch.Tensor(self.gps[idx])
 
@@ -353,3 +363,27 @@ class M16TripletDataset(Dataset):
 
 
 import argparse
+import config
+
+if __name__ == "__main__":
+
+    opt = config.getopt()
+
+    coarse2medium = {}
+    medium2fine = {}
+
+    train_dataset = M16Dataset(split=opt.trainset, opt=opt)
+
+    train_dataloader = torch.utils.data.DataLoader(train_dataset, batch_size=opt.batch_size, num_workers=opt.kernels, shuffle=False, drop_last=False)
+
+    bar = tqdm(enumerate(train_dataloader), total=len(train_dataloader))
+
+    for thing in tqdm(train_dataset.classes):
+        coarse2medium[thing[1]] = thing[0]
+        medium2fine[thing[2]] = thing[1]
+    
+    m = [coarse2medium, medium2fine]
+
+    pickle.dump(m, open("/home/alec/Documents/BigDatasets/resources/class_map.p", "wb"))
+    print(len(coarse2medium.keys()))
+    print(len(medium2fine.keys()))
