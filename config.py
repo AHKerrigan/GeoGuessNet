@@ -22,20 +22,31 @@ def getopt():
     opt.n_epochs = 20
 
     #opt.description = 'GeoGuess4-4.2M-Im2GPS3k-F*'
-    opt.description = 'Testing Scenes'
-
-    opt.archname = 'ResNet50'
+    opt.description = 'Testing Learned Scene Conf'
     opt.evaluate = False
 
-    opt.lr = 1e-2
+    # How often to report loss
+    opt.loss_per_epoch = 100
+
+    # How often to validate
+    opt.val_per_epoch = 25
+
+    opt.lr = 0.01
     opt.step_size = 3
     opt.hier_eval = True
-    opt.scene = True
+    opt.scene = False
+    
+    opt.loss = 'ce'
+    opt.model = 'GeoGuess1'
+    opt.archname = opt.model
 
-    opt.batch_size = 220
+    opt.wandb = True
+
+    opt.batch_size = 128
     opt.distances = [2500, 750, 200, 25, 1]
     opt.trainset = 'train'
-    opt.testset = 'im2gps3k'
+    opt.testset1 = 'im2gps3k'
+    opt.testset2 = 'yfcc25600'
     opt.device = torch.device('cuda')
 
 

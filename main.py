@@ -6,16 +6,18 @@ import torch.nn as nn
 
 #import network
 import dataloader
-from train_and_eval import eval_images_weighted, train_images, eval_images, train_metric_images, eval_images_weighted
+from train_and_eval import eval_images_weighted, train_images, train_images_ood, eval_images, train_images_filtered, eval_images_weighted
 
 
 #from torch.utils.tensorboard import SummaryWriter
 import wandb
+import pickle
 
 from torch.nn import TransformerEncoder, TransformerEncoderLayer
 #from networks import GeoCLIP, VGGTriplet, BasicNetVLAD
 import networks 
 from config import getopt
+import copy
 
 opt = getopt()
 
@@ -33,28 +35,42 @@ wandb.init(project='geoguessnet',
 wandb.run.name = opt.description
 wandb.save()
 
-#weights = [1/40619, 1/2063, 1/1147, 1/4391]
-#class_weights = torch.FloatTensor(weights).cuda()
-#criterion = torch.nn.CrossEntropyLoss(weight=class_weights)
-train_dataset = dataloader.M16Dataset(split=opt.trainset, opt=opt)
-val_dataset = dataloader.M16Dataset(split=opt.testset, opt=opt)
+
+
+#train_dataset = dataloader.M16Dataset(split=opt.trainset, opt=opt)
+#pickle.dump(train_dataset, open("weights/train_dataset.pkl", "wb"))
+train_dataset = pickle.load(open("weights/train_dataset.pkl", "rb"))
+val_dataset1 = dataloader.M16Dataset(split=opt.testset1, opt=opt)
+val_dataset2 = dataloader.M16Dataset(split=opt.testset2, opt=opt)
 
 train_dataloader = torch.utils.data.DataLoader(train_dataset, batch_size=opt.batch_size, num_workers=opt.kernels, shuffle=False, drop_last=False)
-val_dataloader = torch.utils.data.DataLoader(val_dataset, batch_size=opt.batch_size, num_workers=opt.kernels, shuffle=False, drop_last=False)
+val_dataloader1 = torch.utils.data.DataLoader(val_dataset1, batch_size=opt.batch_size, num_workers=opt.kernels, shuffle=False, drop_last=False)
+val_dataloader2 = torch.utils.data.DataLoader(val_dataset2, batch_size=opt.batch_size, num_workers=opt.kernels, shuffle=False, drop_last=False)
 
-criterion = torch.nn.CrossEntropyLoss()
+val_dataloaders = [val_dataloader1, val_dataloader2]
 
-model = networks.JustResNet(trainset=opt.trainset)
+if opt.loss == 'ce':
+    criterion = torch.nn.CrossEntropyLoss()
+
+if opt.model == 'JustResNetOOD':
+    model = networks.JustResNetOOD(trainset=opt.trainset)
+if opt.model == 'GeoGuess1':
+    model = networks.GeoGuess1(trainset=opt.trainset)
+
+
+#dup_model = copy.deepcopy(model)
+#for param in dup_model.parameters():
+#    param.requires_grad = False
+#dup_model.load_state_dict(torch.load('/home/alec/Documents/GeoGuessNet/weights/ResNet50+Hier+Scenes+NewData.pth'))
+
 
 optimizer = torch.optim.SGD(model.parameters(), lr=opt.lr, momentum=0.9, weight_decay=0.0001)
 
 scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=opt.step_size, gamma=0.5)
-#scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer,T_max=500, 
-#                                                   eta_min=1e-6)
 
 
 _ = model.to(opt.device)
-wandb.watch(model, criterion, log="all")
+opt.wandb: wandb.watch(model, criterion, log="all")
 
 acc10 = 0
 for epoch in range(opt.n_epochs): 
@@ -66,13 +82,19 @@ for epoch in range(opt.n_epochs):
         #train_one_epoch_temp1(train_dataloader, model, optimizer, opt, epoch, writer)
         #train_one_epoch_temp1(train_dataloader, model, optimizer, opt, epoch, writer)
         #train_single_frame(train_dataloader=train_dataloader, model=model, criterion=criterion, optimizer=optimizer, scheduler=scheduler, opt=opt, epoch=epoch, writer=writer)
-        train_images(train_dataloader=train_dataloader, model=model, criterion=criterion, optimizer=optimizer, scheduler=scheduler, opt=opt, epoch=epoch, val_dataloader=val_dataloader)
-        #train_metric_images(train_dataloader=train_dataloader, model=model, criterion=criterion, optimizer=optimizer, scheduler=scheduler, opt=opt, epoch=epoch, val_dataloader=val_dataloader)
+        train_images(train_dataloader=train_dataloader, model=model, criterion=criterion, optimizer=optimizer, scheduler=scheduler, opt=opt, epoch=epoch, val_dataloaders=val_dataloaders)
+        #train_images_ood(train_dataloader=train_dataloader, model=model, criterion=criterion, optimizer=optimizer, scheduler=scheduler, opt=opt, epoch=epoch, val_dataloaders=val_dataloaders)
+        #train_images_filtered(train_dataloader, model, criterion, optimizer, scheduler, opt, epoch, val_dataloader=val_dataloader, original_model=dup_model)
 
     #eval_one_epoch(val_dataloader=val_dataloader, model=model, epoch=epoch, opt=opt, writer=writer)
-    torch.save(model.state_dict(), 'weights/' + opt.description + '.pth')
+    save_dict = {
+        'state_dict' : model.state_dict(),
+        'epoch' : epoch,
+        'optimizer' : optimizer,
+        'scheduler' : scheduler
+    }
+    torch.save(save_dict, 'weights/' + opt.description + '.pth')
     #eval_images(val_dataloader=val_dataloader, model=model, epoch=epoch, opt=opt)
-    eval_images_weighted(val_dataloader=val_dataloader, model=model, epoch=epoch, opt=opt)
     scheduler.step()
     
     

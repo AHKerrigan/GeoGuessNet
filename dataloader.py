@@ -2,7 +2,7 @@ import csv
 
 #from matplotlib import transforms
 from geopy.geocoders import Nominatim
-
+from networks import *
 from torch.utils.data import Dataset
 
 from PIL import Image as im
@@ -32,6 +32,8 @@ import matplotlib.pyplot as plt
 from os.path import exists 
 from tqdm import tqdm
 import pickle
+
+import torch.nn.functional as F
 
 #from transformers import ViTModel, ViTConfig
 
@@ -95,19 +97,20 @@ def get_mp16_train(classfile="mp16_places365_mapping_h3.json", gpsfile="mp16_pla
 
     return fnames, classes, scenes, gps
 
-def get_yfcc25600_test(classfile="yfcc_25600_places365_mapping_h3.json", opt=None):
+def get_yfcc25600_test(classfile="yfcc25600_places365.csv", opt=None):
 
-    class_info = json.load(open(opt.resourcse + classfile))
+    class_info = pd.read_csv(opt.resources + classfile)
     base_folder = opt.yfcc25600folder
 
     fnames = []
     classes = []
 
-    for row in class_info:
-        filename = base_folder + row
+    for row in class_info.iterrows():
+        filename = base_folder + row[1]['IMG_ID']
         if exists(filename):
             fnames.append(filename)
-            classes.append([int(x) for x in class_info[row]])
+            #print(row[1]['LAT'])
+            classes.append([float(row[1]['LAT']), float(row[1]['LON'])])
     
     #print(classes)
     return fnames, classes, classes, classes
@@ -239,7 +242,7 @@ class M16Dataset(Dataset):
         if split == 'train1M':
             fnames, classes = get_mp16_train(classfile="mp16_places365_1M_mapping_h3.json", opt=opt)            
         if split == 'yfcc25600':
-            fnames, classes = get_yfcc25600_test(opt=opt)
+            fnames, classes, scenes, gps = get_yfcc25600_test(opt=opt)
         if split == 'im2gps3k':
             fnames, classes, scenes, gps = get_im2gps3k_test(opt=opt)
         if split == 'trainbdd':
@@ -253,8 +256,9 @@ class M16Dataset(Dataset):
                 self.coarse2medium = maps[0]
                 self.medium2fine = maps[1]
 
-                self.medium2fine[929] = 0
-                self.medium2fine[3050] = 0
+                self.medium2fine[1019] = 0
+                self.medium2fine[4595] = 0
+                self.medium2fine[4687] = 0
         
         temp = list(zip(fnames, classes, scenes, gps))
         np.random.shuffle(temp)
@@ -294,96 +298,82 @@ class M16Dataset(Dataset):
     def __len__(self):
         return len(self.data)
 
-class M16TripletDataset(Dataset):
-
-    def __init__(self, crop_size = 112, split='traintriplet', opt=None):
-
-        np.random.seed(0)
-        
-        self.split = split 
-        dict = pickle.load(open(opt.resources + '3MTriplets.p', "rb"))
-        self.data = pd.DataFrame(dict)
-        self.data.to_csv("3MTriplets.csv")
-        
-        self.basefolder = opt.mp16folder
-
-        if self.split in ['traintriplet', 'trainbddtriplet']:
-            self.transform = m16_transform()
-        else:
-            self.transform = m16_val_transform()
-
-    def __getitem__(self, idx):
-
-        #print(self.data[0])
-        row = self.data.iloc[idx]
-
-        '''
-        sample = self.data[idx]
-        coords = []
-        if not self.one_frame:
-            vid, coords = read_frames(sample)
-            vid = vid[:15]
-            coords = coords[:15]
-        else:
-            vid, coords = read_frames(sample, self.one_frame)
-        vid = im.open(sample).convert('RGB')
-        vid = self.transform(vid)
-
-        #print(self.classes[idx])
-        if self.split in ['train', 'train1M', 'trainbdd'] :
-            return vid, torch.Tensor(self.classes[idx]).to(torch.int64), torch.Tensor(self.gps[idx])
-        else:
-            return vid, torch.Tensor(self.gps[idx])
-        '''
-
-        anchor = im.open(self.basefolder + row['Anchor']).convert('RGB')
-        positive = im.open(self.basefolder + row['Positive']).convert('RGB')
-        negative = im.open(self.basefolder + row['Negative']).convert('RGB')
-
-        #if idx % 32 == 0:
-        #    print(self.basefolder + row['Anchor'])
-        #    print(self.basefolder + row['Positive'])
-        #    print(self.basefolder + row['Negative'])
-        #    print(row['ClassA'], row['ClassP'], row['ClassN'])
-
-
-        anchor = self.transform(anchor)
-        positive = self.transform(positive)
-        negative = self.transform(negative)
-
-        vids = torch.stack((anchor, positive, negative))
-
-        classes = [row['ClassA'], row['ClassP'], row['ClassN']]
-
-        return vids, row['#PosHiers'], torch.Tensor(classes).to(torch.int64)
-
-
-    def __len__(self):
-        return len(self.data.index)
 
 
 import argparse
 import config
+import pickle
 
+import pandas as pd
+from sklearn.manifold import TSNE
+from sklearn.datasets import load_iris
+from numpy import reshape
+import seaborn as sns
+import pandas as pd  
+from transformers import ViTFeatureExtractor, ViTModel
+
+from train_and_eval import eval_images_weighted
+
+import numpy as np
+
+from sklearn.cluster import DBSCAN
+from sklearn import metrics
+from sklearn.datasets import make_blobs
+from sklearn.preprocessing import StandardScaler
+
+from hdbscan import HDBSCAN
 if __name__ == "__main__":
+
 
     opt = config.getopt()
 
     coarse2medium = {}
     medium2fine = {}
 
-    train_dataset = M16Dataset(split=opt.trainset, opt=opt)
+    model = JustResNet()
+    model.load_state_dict(torch.load("/home/alec/Documents/GeoGuessNet/weights/ResNet50+Hier+Scenes+NewData.pth"))
+    #model.load_state_dict(torch.load("/home/alec/Documents/GeoGuessNet/weights/Testing OOD.pth")['state_dict'])
+    
+    
+    #model = ViTModel.from_pretrained("google/vit-base-patch16-224-in21k")
+    _ = model.to(opt.device)
+    
+    #train_dataset = M16Dataset(split='train', opt=opt)
+    #pickle.dump(train_dataset, open("weights/datasettemp.pkl", "wb"))
+
+    train_dataset = pickle.load(open("weights/datasettemp.pkl", "rb"))
 
     train_dataloader = torch.utils.data.DataLoader(train_dataset, batch_size=opt.batch_size, num_workers=opt.kernels, shuffle=False, drop_last=False)
 
+    #eval_images_weighted(train_dataloader, model, 1, 1, opt)
     bar = tqdm(enumerate(train_dataloader), total=len(train_dataloader))
 
-    for thing in tqdm(train_dataset.classes):
-        coarse2medium[thing[1]] = thing[0]
-        medium2fine[thing[2]] = thing[1]
-    
-    m = [coarse2medium, medium2fine]
+    total = 0
+    all_files = []
+    for i ,(imgs, classes, scenes, gps, sample) in bar:
+        #coarse_classes = classes[:,0].to(opt.device)
+        #medium_classes = classes[:,1]
+        imgs = imgs.to(opt.device)
 
-    pickle.dump(m, open("/home/alec/Documents/BigDatasets/resources/class_map.p", "wb"))
-    print(len(coarse2medium.keys()))
-    print(len(medium2fine.keys()))
+        with torch.no_grad():
+            x1, x2, x3, _ = model(imgs, evaluate=True)
+
+        prev_ce = F.cross_entropy(x1, classes[:, 0].to(opt.device), reduce=False)
+
+        mask = prev_ce > 7.8213
+        mask = torch.nonzero(mask).squeeze(1).tolist()
+
+        if len(mask) > 0:
+            sample = np.array(sample)[mask]  
+            all_files.append(sample)
+
+
+    all_files = np.concatenate(all_files, axis=0)
+    df = pd.DataFrame(all_files.T)
+    df.to_csv("weights/filteredfiles.csv")
+
+
+
+
+
+
