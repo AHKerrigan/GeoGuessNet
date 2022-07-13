@@ -240,7 +240,7 @@ class JustResNet(nn.Module):
         bs, ch, h, w = x.shape
 
         
-        x = self.backbone(x)
+        x = self.backbone(x).pooler_output
 
         x1 = self.classification1(x)
         x2 = self.classification2(x)
@@ -353,7 +353,7 @@ class GeoGuess1(nn.Module):
         if not evaluate:
             return x1, x2, x3, scene_preds
         else:
-            return x1, x2, x3, x
+            return x1, x2, x3, x_out
 class MixTransformerDeTR(nn.Module):
     def __init__(self, backbone=models.resnet101(pretrained=True), trainset='train'):
         super().__init__()
