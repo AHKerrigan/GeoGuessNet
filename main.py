@@ -19,6 +19,8 @@ import networks
 from config import getopt
 import copy
 
+from torchsummary import summary
+
 opt = getopt()
 
 
@@ -51,13 +53,19 @@ val_dataloaders = [val_dataloader1, val_dataloader2]
 
 if opt.loss == 'ce':
     criterion = torch.nn.CrossEntropyLoss()
+if opt.loss == 'isomax':
+    criterion = networks.IsoMaxLoss()
 
 if opt.model == 'JustResNetOOD':
     model = networks.JustResNetOOD(trainset=opt.trainset)
 if opt.model == 'GeoGuess1':
     model = networks.GeoGuess1(trainset=opt.trainset)
+if opt.model == 'translocator':
+    model = networks.Translocator(trainset='train')
+if opt.model == 'isomax':
+    model = networks.IsoMax()
 
-
+summary(model)
 #dup_model = copy.deepcopy(model)
 #for param in dup_model.parameters():
 #    param.requires_grad = False
@@ -82,8 +90,8 @@ for epoch in range(opt.n_epochs):
         #train_one_epoch_temp1(train_dataloader, model, optimizer, opt, epoch, writer)
         #train_one_epoch_temp1(train_dataloader, model, optimizer, opt, epoch, writer)
         #train_single_frame(train_dataloader=train_dataloader, model=model, criterion=criterion, optimizer=optimizer, scheduler=scheduler, opt=opt, epoch=epoch, writer=writer)
-        train_images(train_dataloader=train_dataloader, model=model, criterion=criterion, optimizer=optimizer, scheduler=scheduler, opt=opt, epoch=epoch, val_dataloaders=val_dataloaders)
-        #train_images_ood(train_dataloader=train_dataloader, model=model, criterion=criterion, optimizer=optimizer, scheduler=scheduler, opt=opt, epoch=epoch, val_dataloaders=val_dataloaders)
+        #train_images(train_dataloader=train_dataloader, model=model, criterion=criterion, optimizer=optimizer, scheduler=scheduler, opt=opt, epoch=epoch, val_dataloaders=val_dataloaders)
+        train_images_ood(train_dataloader=train_dataloader, model=model, criterion=criterion, optimizer=optimizer, scheduler=scheduler, opt=opt, epoch=epoch, val_dataloaders=val_dataloaders)
         #train_images_filtered(train_dataloader, model, criterion, optimizer, scheduler, opt, epoch, val_dataloader=val_dataloader, original_model=dup_model)
 
     #eval_one_epoch(val_dataloader=val_dataloader, model=model, epoch=epoch, opt=opt, writer=writer)

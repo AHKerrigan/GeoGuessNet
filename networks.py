@@ -25,6 +25,11 @@ import random
 import copy
 import pickle
 
+
+
+
+from utils import VisionTransformer, get_seg_model, HRNET_48
+
 def pair(t):
     return t if isinstance(t, tuple) else (t, t)
 
@@ -158,6 +163,7 @@ class CustomTransformer1(nn.Module):
                 PreNorm(dim, FeedForward(dim, mlp_dim, dropout = dropout))
             ]))
     def forward(self, q, k, v):
+        q1 = self.lnk(q)
         k = self.lnk(k)
         v = self.lnv(v)
         for ln1, cxattn, ln2, sattn, ff in self.layers:
@@ -240,7 +246,7 @@ class JustResNet(nn.Module):
         bs, ch, h, w = x.shape
 
         
-        x = self.backbone(x).pooler_output
+        x = self.backbone(x)
 
         x1 = self.classification1(x)
         x2 = self.classification2(x)
@@ -308,7 +314,83 @@ class JustResNetOOD(nn.Module):
             return x1, x2, x3, c1, c2, c3
         else:
             return x1, x2, x3, x
+class IsoMaxLoss(nn.Module):
+    def __init__(self, entropic_scale = 10.0):
+        super(IsoMaxLoss, self).__init__()
+        self.entropic_scale = entropic_scale
+    def forward(self, logits, targets):
 
+        distances = -logits
+        prob_train = nn.Softmax(dim=1)(-self.entropic_scale * distances)
+        prob_targs = prob_train[range(distances.size(0)), targets]
+
+        loss = -torch.log(prob_targs).mean()
+
+        return loss
+
+class IsoMax(nn.Module):
+    def __init__(self, backbone=models.resnet50(pretrained=True), trainset='train'):
+        super().__init__()
+
+        
+        self.n_features = backbone.fc.in_features
+        self.backbone = torch.nn.Sequential(*list(backbone.children())[:-2])
+
+        self.backbone.avgpool = nn.AdaptiveAvgPool2d(1)
+        self.backbone.flatten = nn.Flatten(start_dim=1)
+
+        #self.prototypes1 = nn.Parameter(torch.Tensor(3298, self.n_features))
+        #self.prototypes2 = nn.Parameter(torch.Tensor(7202, self.n_features // 2))
+        self.prototypes3 = nn.Parameter(torch.Tensor(12893, self.n_features))
+
+        #self.reduce = nn.Linear(self.n_features, self.n_features // 2)
+
+        #nn.init.normal_(self.prototypes1, mean=0.0, std=1.0)
+        #nn.init.normal_(self.prototypes2, mean=0.0, std=1.0)
+        nn.init.normal_(self.prototypes3, mean=0.0, std=1.0)
+
+        #self.distance_scale1 = nn.Parameter(torch.Tensor(1))
+        #self.distance_scale2 = nn.Parameter(torch.Tensor(1))
+        self.distance_scale3 = nn.Parameter(torch.Tensor(1))
+
+        #nn.init.constant_(self.distance_scale1, 1.0)
+        #nn.init.constant_(self.distance_scale2, 1.0)
+        nn.init.constant_(self.distance_scale3, 1.0)
+        
+        '''
+        self.backbone = ViTModel.from_pretrained("google/vit-base-patch16-224-in21k")
+        self.n_features = 768
+        '''
+  
+        
+    def forward(self, x, evaluate=False):
+        bs, ch, h, w = x.shape
+
+        #x = self.reduce(self.backbone(x))
+        x = self.backbone(x)
+
+        '''
+        distances1 = torch.abs(self.distance_scale1) * torch.cdist(
+            F.normalize(x), F.normalize(self.prototypes1),
+            p=2.0, compute_mode='donot_use_mm_for_euclid_dist'
+        )
+        distances2 = torch.abs(self.distance_scale2) * torch.cdist(
+            F.normalize(x), F.normalize(self.prototypes2),
+            p=2.0, compute_mode='donot_use_mm_for_euclid_dist'
+        )
+        '''
+        distances3 = torch.abs(self.distance_scale3) * torch.cdist(
+            F.normalize(x), F.normalize(self.prototypes3),
+            p=2.0, compute_mode='donot_use_mm_for_euclid_dist'
+        )
+        #x1 = -distances1
+        #x2 = -distances2
+        x3 = -distances3
+
+        if not evaluate:
+            return x3, x3, x3, x3
+        else:
+            return x3, x3, x3, x
 class GeoGuess1(nn.Module):
     def __init__(self, backbone=models.resnet50(pretrained=True), trainset='train'):
         super().__init__()
@@ -330,13 +412,16 @@ class GeoGuess1(nn.Module):
             self.classification3 = nn.Linear(self.n_features, 520) 
 
         self.trans = CustomTransformer1(768, 6, 12, 64, 1024)
-        self.queries = torch.rand(16, 3, 768, requires_grad=True).cuda()
+        self.queries = nn.Parameter(torch.rand(16, 3, 768, requires_grad=True, device='cuda'))
 
     def forward(self, x, evaluate=False):
         bs, ch, h, w = x.shape
 
         qs = rearrange(self.queries, 'scenes hiers dim -> 1 (scenes hiers) dim').repeat(bs, 1, 1)
         x = self.backbone(x).last_hidden_state
+
+        #print(x.get_device(), flush=True)
+        #print(qs.get_device(), flush=True)
 
         x_out = self.trans(qs, x, x)
 
@@ -410,11 +495,107 @@ class MixTransformerDeTR(nn.Module):
             return x1, x2, x3, s1, s2, s3
         else:
             return x1, x2, x3
+        
+class MMFusion(nn.Module):
+    def __init__(self):
+        super().__init__()
 
+        self.attn1 = CustomAttention(768, 12, 64)
+        self.attn2 = CustomAttention(768, 12, 64)
+
+        self.w = nn.Linear(768*2, 768)
+    def forward(self, rgb, seg):
+        
+        r2s = self.attn1(rgb, seg, seg)
+        s2r = self.attn2(seg, rgb, rgb)
+
+        rgb_cls = r2s[:, 0, :]
+        s2r_cls = s2r[:, 0, :]
+
+        mixed = self.w(torch.cat((rgb_cls, s2r_cls), 1))
+
+        return mixed
+    
+class Translocator(nn.Module):
+    def __init__(self, trainset='train'):
+        super().__init__()
+
+        
+        self.rgb_backbone = VisionTransformer(img_size=224, patch_size=16, in_chans=3, num_classes=1000, global_pool='token', weight_init='skip', embed_dim=768)
+        self.rgb_backbone.load_state_dict(torch.load("weights/vit.pth"), strict=False)
+
+        self.proj_seg = nn.Linear(150, 3)
+
+        self.seg_backbone = VisionTransformer(img_size=224, patch_size=16, in_chans=3, num_classes=1000, global_pool='token', weight_init='skip', embed_dim=768)
+        self.seg_backbone.load_state_dict(torch.load("weights/vit.pth"), strict=False)
+
+        seg_config = HRNET_48
+        self.hrnet = get_seg_model(seg_config)
+
+        for param in self.hrnet.parameters():
+            param.requires_grad = False
+
+        self.n_features = 768
+
+        self.fusion_list = nn.ModuleList([MMFusion() for i in range(12)])
+
+        if trainset in ['train', 'traintriplet']:
+            self.classification1 = nn.Linear(self.n_features, 3298)
+            self.classification2 = nn.Linear(self.n_features, 7202)
+            self.classification3 = nn.Linear(self.n_features, 12893)
+        if trainset == 'train1M':
+            self.classification1 = nn.Linear(self.n_features, 689)
+            self.classification2 = nn.Linear(self.n_features, 689)
+            self.classification3 = nn.Linear(self.n_features, 689)
+        if trainset == 'bddtrain':
+            self.classification1 = nn.Linear(self.n_features, 49)
+            self.classification2 = nn.Linear(self.n_features, 215)
+            self.classification3 = nn.Linear(self.n_features, 520)  
+
+        self.scene = nn.Linear(768, 16)     
+
+        
+    def forward(self, x, evaluate=False):
+        bs, ch, h, w = x.shape
+
+        seg_map = self.hrnet(x)[1]
+
+        # Scale up the segmentation map
+        seg_map = rearrange(F.interpolate(seg_map, scale_factor=4), 'bs ch h w -> bs h w ch')
+
+        # Reduce the classes of the segmentation map down to 3 channels
+        seg_map = rearrange(self.proj_seg(seg_map), 'bs h w ch -> bs ch h w')
+
+        rgb = self.rgb_backbone.forward_features(x)
+        seg = self.seg_backbone.forward_features(seg_map)
+        
+        for i in range(12):
+            seg = self.seg_backbone.blocks[i](seg)
+            rgb = self.rgb_backbone.blocks[i](rgb)
+
+            fuse = self.fusion_list[i](rgb, seg)
+
+
+            seg = torch.cat((seg[:,1:,], fuse.unsqueeze(1)), 1)
+            rgb = torch.cat((rgb[:,1:,], fuse.unsqueeze(1)), 1)
+
+        x1 = self.classification1(fuse)
+        x2 = self.classification2(fuse)
+        x3 = self.classification3(fuse)
+
+        scene = self.scene(fuse)
+        
+        if not evaluate:
+            return x1, x2, x3, scene
+        else:
+            return x1, x2, x3, x
+        
+        return rgb
 
 if __name__ == "__main__":
 
     image = torch.rand((84,3,224,224))
+    image = image.to("cuda")
 
     '''
     feature_extractor = DetrFeatureExtractor.from_pretrained("facebook/detr-resnet-50")
@@ -426,24 +607,12 @@ if __name__ == "__main__":
     print(outputs.last_hidden_state.shape)
     '''
 
+    #model = Translocator()
     model = GeoGuess1()
-    x1, x2, x3, s1, s2, s3 = model(image)
+    _ = model.to("cuda")
 
-    print(x3.shape)
+    macs, params = get_model_complexity_info(model, (3, 224, 224), as_strings=True,
+                                            print_per_layer_stat=True, verbose=True)
 
-
-
-    #_ = model.to('cuda')
-    #image = image.to('cuda')
-
-
-
-    #x1, x2, x3, cls = model(image)
-    #print(x1.shape, x2.shape, x3.shape, cls.shape)
-
-
-    
-    #model = BasicDETR()
-    #tensor = torch.rand((16, 3, 15, 224, 224))
-    #x = model(tensor)
-    #print(x.shape)
+    print('{:<30}  {:<8}'.format('Computational complexity: ', macs))
+    print('{:<30}  {:<8}'.format('Number of parameters: ', params))

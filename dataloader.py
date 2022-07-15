@@ -321,7 +321,39 @@ from sklearn import metrics
 from sklearn.datasets import make_blobs
 from sklearn.preprocessing import StandardScaler
 
+ # clustering dataset
+from sklearn.cluster import KMeans
+from sklearn import metrics
+import numpy as np
+import matplotlib.pyplot as plt
+from sklearn.manifold import TSNE
+
+
 from hdbscan import HDBSCAN
+
+from geopy.distance import great_circle as GCD
+def distance_accuracy(targets, preds, dis=2500, set='im2gps3k', trainset='train', opt=None):
+    if trainset in ['train', 'traintriplet']:
+        coarse_gps = pd.read_csv(opt.resources + "cells_50_1000.csv") 
+    if trainset == 'train1M':
+        coarse_gps = pd.read_csv(opt.resources + "cells_50_1000_images_1M.csv")
+    if trainset == 'trainbdd':
+        coarse_gps = pd.read_csv(opt.resources + "BDD-50-200images.csv")        
+
+    course_preds = list(coarse_gps.iloc[preds][['latitude_mean', 'longitude_mean']].to_records(index=False))
+    course_target = [(x[0], x[1]) for x in targets]   
+
+    total = len(course_target)
+    correct = 0
+
+    for i in range(len(course_target)):
+        #print(GD(course_preds[i], course_target[i]).km)
+        #if GD(course_preds[i], course_target[i]).km <= dis:
+        if GCD(course_preds[i], course_target[i]).km <= dis:
+            correct += 1
+
+    return correct / total
+
 if __name__ == "__main__":
 
 
@@ -349,31 +381,37 @@ if __name__ == "__main__":
     bar = tqdm(enumerate(train_dataloader), total=len(train_dataloader))
 
     total = 0
-    all_files = []
-    for i ,(imgs, classes, scenes, gps, sample) in bar:
+    all_embeds = []
+
+    all = []
+    for i ,(imgs, classes, scenes, gps, samples) in bar:
         #coarse_classes = classes[:,0].to(opt.device)
         #medium_classes = classes[:,1]
         imgs = imgs.to(opt.device)
+        labels = classes[:,2].to(opt.device)
 
         with torch.no_grad():
             x1, x2, x3, _ = model(imgs, evaluate=True)
-
-        prev_ce = F.cross_entropy(x1, classes[:, 0].to(opt.device), reduce=False)
-
-        mask = prev_ce > 7.8213
-        mask = torch.nonzero(mask).squeeze(1).tolist()
-
-        if len(mask) > 0:
-            sample = np.array(sample)[mask]  
-            all_files.append(sample)
-        
-
-    all_files = np.concatenate(all_files, axis=0)
-    df = pd.DataFrame(all_files.T)
-    df.to_csv("weights/filteredfiles.csv")
+        #x = model(imgs).pooler_output.cpu().numpy()
 
 
+        out = F.cross_entropy(x3, labels, reduce=False)
+        all.append(out.cpu().numpy())
+        #mask = out <= 2.96671324968338
+        #indices = torch.nonzero(mask).squeeze(1).tolist()
+
+        #samples = [x for x in samples]
+
+        #if len(samples) > 0:
+        #    good_samples = [samples[i] for i in indices]
+
+        #print(good_samples)
+
+        if i > 1000:
+            break
 
 
-
-
+    all = np.concatenate(all, axis=0)
+    print(np.quantile(all, 0.95))
+    plt.hist(all)
+    plt.savefig("weights/hist.jpg")

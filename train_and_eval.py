@@ -106,8 +106,8 @@ def train_images(train_dataloader, model, criterion, optimizer, scheduler, opt, 
         bar.set_postfix(Epoch=epoch, Train_Loss=epoch_loss,
                         LR=optimizer.param_groups[0]['lr'])
         
-        step = ((epoch + 1) * opt.loss_per_epoch) + (i / loss_cycle)
-        if i % loss_cycle == 0:
+        step = ((epoch + 1) * opt.loss_per_epoch) + ((i+1) / loss_cycle)
+        if (i+1) % loss_cycle == 0:
             if opt.trainset == 'train':
                 if opt.wandb: wandb.log({"Training Loss" : loss.item(), 'Step' : int(step)})
             else:
@@ -244,13 +244,11 @@ def train_images_ood(train_dataloader, model, criterion, optimizer, scheduler, o
 
     losses = []
     running_loss = 0.0
-    running_high_c = 0.0
-    running_low_c = 0.0
     dataset_size = 0
 
 
-    loss_cycle = (len(data_iterator.dataset.data) // (opt.batch_size * 164))
-    val_cycle = loss_cycle * 5
+    loss_cycle = (len(data_iterator.dataset.data) // (opt.batch_size * opt.loss_per_epoch))
+    val_cycle = (len(data_iterator.dataset.data) // (opt.batch_size * opt.val_per_epoch))
     print("Outputting loss every", loss_cycle, "batches")
     print("Validating every", val_cycle, "batches")
     print("Starting Epoch", epoch)
@@ -276,91 +274,46 @@ def train_images_ood(train_dataloader, model, criterion, optimizer, scheduler, o
         optimizer.zero_grad()
         
         ##############  Get Outputs ##############
-        outs1, outs2, outs3, c1, c2, c3 = model(imgs, evaluate=False)
+        outs1, outs2, outs3, _ = model(imgs, evaluate=False)
 
         # Get the one hot labels
         y1 = F.one_hot(labels1, num_classes=3298)
         y2 = F.one_hot(labels2, num_classes=7202)
         y3 = F.one_hot(labels3, num_classes=12893)
 
-        # Make sure we don't have any numerical instability
-        eps = 1e-12
-        outs1 = torch.clamp(outs1, 0. + eps, 1. - eps)
-        outs2 = torch.clamp(outs2, 0. + eps, 1. - eps)
-        outs3 = torch.clamp(outs3, 0. + eps, 1. - eps)
+        #loss1 = criterion(outs1, labels1)
+        #loss2 = criterion(outs2, labels2)
+        loss3 = criterion(outs3, labels3)
 
-        c1 = torch.clamp(c1, 0. + eps, 1. - eps)
-        c2 = torch.clamp(c2, 0. + eps, 1. - eps)
-        c3 = torch.clamp(c3, 0. + eps, 1. - eps)
-
-        torch.set_printoptions(edgeitems=30)
-
-        # Randomly set half hte confidences to one
-        b1 = Variable(torch.bernoulli(torch.Tensor(c1.size()).uniform_(0, 1))).cuda()
-        b2 = Variable(torch.bernoulli(torch.Tensor(c2.size()).uniform_(0, 1))).cuda()
-        b3 = Variable(torch.bernoulli(torch.Tensor(c3.size()).uniform_(0, 1))).cuda()
-
-        conf1 = c1 * b1 + (1 - b1)
-        conf2 = c2 * b2 + (1 - b2)
-        conf3 = c3 * b3 + (1 - b3)
-
-        # Obtain the new predictions
-        pred1_new = torch.log(outs1 * conf1.expand_as(outs1) + y1 * (1 - conf1.expand_as(y1)))
-        pred2_new = torch.log(outs2 * conf2.expand_as(outs2) + y2 * (1 - conf2.expand_as(y2)))
-        pred3_new = torch.log(outs3 * conf3.expand_as(outs3) + y3 * (1 - conf3.expand_as(y3)))
-
-        task1_loss = F.nll_loss(pred1_new, labels1)
-        task2_loss = F.nll_loss(pred2_new, labels2)
-        task3_loss = F.nll_loss(pred3_new, labels3)
-        
-        c_loss1 = (-1 * torch.log(c1)).mean()
-        c_loss2 = (-1 * torch.log(c2)).mean()
-        c_loss3 = (-1 * torch.log(c3)).mean()
-
-        c_losstotal = model.lamb * ((c_loss1 + c_loss2 + c_loss3) / 3)
-        task_losstotal = (task1_loss + task2_loss + task3_loss) / 3
-        
-        loss = c_losstotal + task_losstotal
+        #loss = loss1 + loss2 + loss3
+        loss = loss3
 
         loss.backward()
 
         optimizer.step()     
-        
-        if model.budget > ((c_loss1 + c_loss2 + c_loss3) / 3):
-            model.lamb = model.lamb / 1.01
-        else:
-            model.lamb = model.lamb / 0.99
 
         losses.append(loss.item())
 
         dataset_size += batch_size
 
         running_loss += (loss.item() * batch_size)
-        running_high_c = (running_high_c + (c1.max().item() * batch_size)) / dataset_size
-        running_low_c = (running_low_c + (c1.min().item() * batch_size)) / dataset_size
-
-        
 
         epoch_loss = running_loss / dataset_size
-        
 
         bar.set_postfix(Epoch=epoch, Train_Loss=epoch_loss,
                         LR=optimizer.param_groups[0]['lr'], 
-                        lamb=model.lamb,
-                        high_c = running_high_c,
-                        low_c = running_low_c
                         )
         
-
-        if i % loss_cycle == 0:
+        step = ((epoch + 1) * opt.loss_per_epoch) + ((i+1) / loss_cycle)
+        if (i+1) % loss_cycle == 0:
             if opt.trainset == 'train':
-                if opt.wandb: wandb.log({"Training Loss" : loss.item(), 'Step' : int((epoch + 1) * (i / loss_cycle))})
+                if opt.wandb: wandb.log({"Training Loss" : loss.item(), 'Step' : int(step)})
             else:
                 if opt.wandb: wandb.log({opt.trainset + " Training Loss" : loss.item()})
             #print("interation", i, "of", len(data_iterator))
         if val_dataloaders != None and i % val_cycle == 0:
             for val_dataloader in val_dataloaders:
-                eval_images_weighted(val_dataloader=val_dataloader, model=model, epoch=epoch, step=int((epoch + 1) * (i / val_cycle)), opt=opt)
+                eval_images_weighted(val_dataloader=val_dataloader, model=model, epoch=epoch, step=int(step), opt=opt)
             #eval_images(val_dataloader, model, epoch, opt)
     print("The loss of epoch", epoch, "was ", np.mean(losses))
     
@@ -451,6 +404,7 @@ def eval_images_weighted(val_dataloader, model, epoch, step, opt):
         outs2= F.softmax(outs2, dim=1)
         outs3 = F.softmax(outs3, dim=1)
 
+        '''
         coarseweights = torch.ones(outs2.shape).cuda()
         mediumweights = torch.ones(outs3.shape).cuda()
 
@@ -464,7 +418,9 @@ def eval_images_weighted(val_dataloader, model, epoch, step, opt):
             mediumweights[:,i] = outs2[:,val_dataloader.dataset.medium2fine[i]]
         outs3 = outs3 * mediumweights
 
+        '''
         outs3 = torch.argmax(outs3, dim=-1).detach().cpu().numpy()
+
 
         targets.append(labels)
         preds.append(outs3)

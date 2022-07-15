@@ -10,4 +10,4 @@ weights/
 config.py
 weights/*
 wandb/*
-
+misc.ipynb
