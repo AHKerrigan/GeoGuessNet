@@ -286,8 +286,13 @@ class M16Dataset(Dataset):
         else:
             vid, coords = read_frames(sample, self.one_frame)
         '''
-        vid = im.open(sample).convert('RGB')
-        vid = self.transform(vid)
+
+        try:
+            vid = im.open(sample).convert('RGB')
+            vid = self.transform(vid)
+        except:
+            print(f"Failed to load {sample}!")
+            vid = torch.rand(3,224,224)
 
         #print(self.classes[idx])
         if self.split in ['train', 'train1M', 'trainbdd'] :
