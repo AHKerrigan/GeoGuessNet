@@ -7,8 +7,11 @@ import networks
 def getopt():
     parser = argparse.ArgumentParser()
 
+    
     opt = parser.parse_args()
+    opt.gpus = 1
     opt.kernels = multiprocessing.cpu_count()
+    #pt.kernels = opt.gpus * 4
 
     opt.BDDfolder = "/home/alec/Documents/BigDatasets/BDD100k_Big/Ground/"
     opt.yfcc25600folder = "/home/alec/Documents/BigDatasets/yfcc25600/"
@@ -22,7 +25,7 @@ def getopt():
     opt.n_epochs = 20
 
     #opt.description = 'GeoGuess4-4.2M-Im2GPS3k-F*'
-    opt.description = 'Testing IsoMax fine'
+    opt.description = 'ResNet50+NoScenes+ExtraLayersDropout+NewData'
     opt.evaluate = False
 
     # How often to report loss
@@ -31,18 +34,19 @@ def getopt():
     # How often to validate
     opt.val_per_epoch = 25
 
-    opt.lr = 0.1
-    opt.step_size = 3
+    opt.lr = 0.01
+    opt.step_size = 4
     opt.hier_eval = True
     opt.scene = False
+    opt.mixed_pres = True
     
-    opt.loss = 'isomax'
-    opt.model = 'isomax'
+    opt.loss = 'ce'
+    opt.model = 'JustResNet'
     opt.archname = opt.model
 
     opt.wandb = True
 
-    opt.batch_size = 64
+    opt.batch_size = 200
     opt.distances = [2500, 750, 200, 25, 1]
     opt.trainset = 'train'
     opt.testset1 = 'im2gps3k'

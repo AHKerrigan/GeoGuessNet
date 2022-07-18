@@ -18,8 +18,13 @@ from torch.nn import TransformerEncoder, TransformerEncoderLayer
 import networks 
 from config import getopt
 import copy
+import torch.distributed as dist
+#from torchsummary import summary
 
-from torchsummary import summary
+import torch.distributed as dist
+from torch.utils.data.distributed import DistributedSampler
+
+
 
 opt = getopt()
 
@@ -45,17 +50,21 @@ train_dataset = pickle.load(open("weights/train_dataset.pkl", "rb"))
 val_dataset1 = dataloader.M16Dataset(split=opt.testset1, opt=opt)
 val_dataset2 = dataloader.M16Dataset(split=opt.testset2, opt=opt)
 
-train_dataloader = torch.utils.data.DataLoader(train_dataset, batch_size=opt.batch_size, num_workers=opt.kernels, shuffle=False, drop_last=False)
-val_dataloader1 = torch.utils.data.DataLoader(val_dataset1, batch_size=opt.batch_size, num_workers=opt.kernels, shuffle=False, drop_last=False)
-val_dataloader2 = torch.utils.data.DataLoader(val_dataset2, batch_size=opt.batch_size, num_workers=opt.kernels, shuffle=False, drop_last=False)
+# Non-distributed training
+train_dataloader = torch.utils.data.DataLoader(train_dataset, batch_size=opt.batch_size, num_workers=opt.kernels, shuffle=False, drop_last=False, pin_memory=True)
+val_dataloader1 = torch.utils.data.DataLoader(val_dataset1, batch_size=opt.batch_size, num_workers=opt.kernels, shuffle=False, drop_last=False, pin_memory=True)
+val_dataloader2 = torch.utils.data.DataLoader(val_dataset2, batch_size=opt.batch_size, num_workers=opt.kernels, shuffle=False, drop_last=False, pin_memory=True)
 
 val_dataloaders = [val_dataloader1, val_dataloader2]
 
 if opt.loss == 'ce':
-    criterion = torch.nn.CrossEntropyLoss()
+    criterion = torch.nn.CrossEntropyLoss().to(opt.device)
 if opt.loss == 'isomax':
     criterion = networks.IsoMaxLoss()
 
+if opt.model == 'JustResNet':
+    model = networks.JustResNet(trainset=opt.trainset)
+    torch.backends.cudnn.benchmark = True
 if opt.model == 'JustResNetOOD':
     model = networks.JustResNetOOD(trainset=opt.trainset)
 if opt.model == 'GeoGuess1':
@@ -65,7 +74,6 @@ if opt.model == 'translocator':
 if opt.model == 'isomax':
     model = networks.IsoMax()
 
-summary(model)
 #dup_model = copy.deepcopy(model)
 #for param in dup_model.parameters():
 #    param.requires_grad = False
@@ -75,6 +83,11 @@ summary(model)
 optimizer = torch.optim.SGD(model.parameters(), lr=opt.lr, momentum=0.9, weight_decay=0.0001)
 
 scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=opt.step_size, gamma=0.5)
+
+if opt.mixed_pres:
+    scaler = torch.cuda.amp.GradScaler()
+if opt.gpus > 1:
+    model = nn.DataParralel(model)
 
 
 _ = model.to(opt.device)
@@ -90,8 +103,8 @@ for epoch in range(opt.n_epochs):
         #train_one_epoch_temp1(train_dataloader, model, optimizer, opt, epoch, writer)
         #train_one_epoch_temp1(train_dataloader, model, optimizer, opt, epoch, writer)
         #train_single_frame(train_dataloader=train_dataloader, model=model, criterion=criterion, optimizer=optimizer, scheduler=scheduler, opt=opt, epoch=epoch, writer=writer)
-        #train_images(train_dataloader=train_dataloader, model=model, criterion=criterion, optimizer=optimizer, scheduler=scheduler, opt=opt, epoch=epoch, val_dataloaders=val_dataloaders)
-        train_images_ood(train_dataloader=train_dataloader, model=model, criterion=criterion, optimizer=optimizer, scheduler=scheduler, opt=opt, epoch=epoch, val_dataloaders=val_dataloaders)
+        train_images(train_dataloader=train_dataloader, model=model, criterion=criterion, optimizer=optimizer, scheduler=scheduler, opt=opt, epoch=epoch, val_dataloaders=val_dataloaders, scaler=scaler)
+        #train_images_ood(train_dataloader=train_dataloader, model=model, criterion=criterion, optimizer=optimizer, scheduler=scheduler, opt=opt, epoch=epoch, val_dataloaders=val_dataloaders)
         #train_images_filtered(train_dataloader, model, criterion, optimizer, scheduler, opt, epoch, val_dataloader=val_dataloader, original_model=dup_model)
 
     #eval_one_epoch(val_dataloader=val_dataloader, model=model, epoch=epoch, opt=opt, writer=writer)

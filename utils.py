@@ -23,7 +23,7 @@ from typing import Union, Callable, Type
 from copy import deepcopy
 
 import timm
-from torchsummary import summary
+#from torchsummary import summary
 
 import os
 import logging

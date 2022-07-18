@@ -44,13 +44,17 @@ class PreNorm(nn.Module):
         return self.fn(self.norm(x), **kwargs)
 
 class FeedForward(nn.Module):
-    def __init__(self, dim, hidden_dim, dropout = 0.):
+    def __init__(self, dim, hidden_dim, dropout = 0., dropout2 = -1, out_dim=-1):
         super().__init__()
+        if out_dim == -1:
+            out_dim = dim
+        if dropout2 == -1:
+            dropout2 = dropout
         self.net = nn.Sequential(
             nn.Linear(dim, hidden_dim),
             nn.GELU(),
             nn.Dropout(dropout),
-            nn.Linear(hidden_dim, dim),
+            nn.Linear(hidden_dim, out_dim),
             nn.Dropout(dropout)
         )
     def forward(self, x):
@@ -227,8 +231,10 @@ class JustResNet(nn.Module):
 
         if trainset in ['train', 'traintriplet']:
             self.classification1 = nn.Linear(self.n_features, 3298)
-            self.classification2 = nn.Linear(self.n_features, 7202)
-            self.classification3 = nn.Linear(self.n_features, 12893)
+            #self.classification2 = nn.Linear(self.n_features, 7202)
+            self.classification2 = FeedForward(dim=self.n_features, hidden_dim=3000, dropout = 0.1, dropout2 = 0.0, out_dim=7202)
+            #self.classification3 = nn.Linear(self.n_features, 12893)
+            self.classification3 = FeedForward(dim=self.n_features, hidden_dim=6000, dropout = 0.1, dropout2 = 0.0, out_dim=12893)
         if trainset == 'train1M':
             self.classification1 = nn.Linear(self.n_features, 689)
             self.classification2 = nn.Linear(self.n_features, 689)
@@ -252,12 +258,12 @@ class JustResNet(nn.Module):
         x2 = self.classification2(x)
         x3 = self.classification3(x)
 
-        s1 = self.scene1(x)
-        s2 = self.scene2(x)
-        s3 = self.scene3(x)
+        #s1 = self.scene1(x)
+        s = self.scene2(x)
+        #s3 = self.scene3(x)
         
         if not evaluate:
-            return x1, x2, x3, s1, s2, s3
+            return x1, x2, x3, s
         else:
             return x1, x2, x3, x
 
@@ -411,7 +417,7 @@ class GeoGuess1(nn.Module):
             self.classification2 = nn.Linear(self.n_features, 215)
             self.classification3 = nn.Linear(self.n_features, 520) 
 
-        self.trans = CustomTransformer1(768, 6, 12, 64, 1024)
+        self.trans = CustomTransformer1(768, 6, 12, 64, 1024, dropout=0.1)
         self.queries = nn.Parameter(torch.rand(16, 3, 768, requires_grad=True, device='cuda'))
 
     def forward(self, x, evaluate=False):

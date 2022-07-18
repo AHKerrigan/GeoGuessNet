@@ -25,7 +25,7 @@ import pandas as pd
 
 import copy
 
-def train_images(train_dataloader, model, criterion, optimizer, scheduler, opt, epoch, val_dataloaders=None):
+def train_images(train_dataloader, model, criterion, optimizer, scheduler, opt, epoch, val_dataloaders=None, scaler=None):
 
     batch_times, model_times, losses = [], [], []
     accuracy_regressor, accuracy_classifier = [], []
@@ -34,7 +34,7 @@ def train_images(train_dataloader, model, criterion, optimizer, scheduler, opt, 
     data_iterator = train_dataloader 
 
     losses = []
-    running_loss = 0.0
+    running_loss = torch.tensor([0.0]).to(opt.device)
     dataset_size = 0
 
 
@@ -65,49 +65,50 @@ def train_images(train_dataloader, model, criterion, optimizer, scheduler, opt, 
 
         scenelabels = scenelabels.to(opt.device)
 
-        imgs = imgs.to(opt.device)
+        # Cast to mixed precision to speed things up 
+        with torch.cuda.amp.autocast():
+            imgs = imgs.to(opt.device)
 
-        optimizer.zero_grad()
-        
-        ##############  Get Outputs ##############
-        if opt.scene:
-            outs1, outs2, outs3, scene1 = model(imgs)
-        else:
-            outs1, outs2, outs3, _ = model(imgs, evaluate=True)
+            optimizer.zero_grad()
+            
+            ##############  Get Outputs ##############
 
-        torch.set_printoptions(edgeitems=30)
+            if opt.scene:
+                outs1, outs2, outs3, scene1 = model(imgs)
+            else:
+                outs1, outs2, outs3, _ = model(imgs, evaluate=True)
 
-        loss1 = 0
-        loss2 = 0
-        loss3 = 0
+            loss1 = 0
+            loss2 = 0
+            loss3 = 0
 
-        loss1 = criterion(outs1, labels1)
-        loss2 = criterion(outs2, labels2)
-        loss3 = criterion(outs3, labels3)
+            loss1 = criterion(outs1, labels1)
+            loss2 = criterion(outs2, labels2)
+            loss3 = criterion(outs3, labels3)
 
-        loss = loss1 + loss2 + loss3
+            loss = loss1 + loss2 + loss3
 
-        if opt.scene:
-            sceneloss = criterion(scene1, scenelabels)
-            loss += sceneloss
+            if opt.scene:
+                sceneloss = criterion(scene1, scenelabels)
+                loss += sceneloss
 
-        loss.backward()
 
-        optimizer.step()     
-        #scheduler.step()
+        scaler.scale(loss).backward()
 
-        losses.append(loss.item())
+        scaler.step(optimizer)    
+        scaler.update()
 
-        running_loss += (loss.item() * batch_size)
+        #losses.append(loss.item())
+
+        running_loss += (loss * batch_size)
         dataset_size += batch_size
 
         epoch_loss = running_loss / dataset_size
-
-        bar.set_postfix(Epoch=epoch, Train_Loss=epoch_loss,
-                        LR=optimizer.param_groups[0]['lr'])
         
         step = ((epoch + 1) * opt.loss_per_epoch) + ((i+1) / loss_cycle)
         if (i+1) % loss_cycle == 0:
+            bar.set_postfix(Epoch=epoch, Train_Loss=epoch_loss.item(),
+                        LR=optimizer.param_groups[0]['lr'])
             if opt.trainset == 'train':
                 if opt.wandb: wandb.log({"Training Loss" : loss.item(), 'Step' : int(step)})
             else:
@@ -117,7 +118,6 @@ def train_images(train_dataloader, model, criterion, optimizer, scheduler, opt, 
             for val_dataloader in val_dataloaders:
                 eval_images_weighted(val_dataloader=val_dataloader, model=model, epoch=epoch, step=int(step), opt=opt)
             #eval_images(val_dataloader, model, epoch, opt)
-    print("The loss of epoch", epoch, "was ", np.mean(losses))
 
 def train_images_filtered(train_dataloader, model, criterion, optimizer, scheduler, opt, epoch, val_dataloader=None, original_model=None):
 
