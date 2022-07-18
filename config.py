@@ -25,7 +25,7 @@ def getopt():
     opt.n_epochs = 20
 
     #opt.description = 'GeoGuess4-4.2M-Im2GPS3k-F*'
-    opt.description = 'ResNet50+NoScenes+ExtraLayersDropout+NewData'
+    opt.description = 'Accumulate Test'
     opt.evaluate = False
 
     # How often to report loss
@@ -46,13 +46,14 @@ def getopt():
 
     opt.wandb = True
 
-    opt.batch_size = 200
+    opt.batch_size = 256
+    opt.accumulate = 2
     opt.distances = [2500, 750, 200, 25, 1]
     opt.trainset = 'train'
     opt.testset1 = 'im2gps3k'
     opt.testset2 = 'yfcc25600'
     opt.device = torch.device('cuda')
 
-
+    opt.batch_size = opt.batch_size * opt.gpus
 
     return opt

@@ -291,7 +291,7 @@ class M16Dataset(Dataset):
             vid = im.open(sample).convert('RGB')
             vid = self.transform(vid)
         except:
-            print(f"Failed to load {sample}!")
+            print(f"Failed to load {sample}!", flush=True)
             vid = torch.rand(3,224,224)
 
         #print(self.classes[idx])

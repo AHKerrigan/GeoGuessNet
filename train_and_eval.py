@@ -68,8 +68,6 @@ def train_images(train_dataloader, model, criterion, optimizer, scheduler, opt, 
         # Cast to mixed precision to speed things up 
         with torch.cuda.amp.autocast():
             imgs = imgs.to(opt.device)
-
-            optimizer.zero_grad()
             
             ##############  Get Outputs ##############
 
@@ -77,11 +75,6 @@ def train_images(train_dataloader, model, criterion, optimizer, scheduler, opt, 
                 outs1, outs2, outs3, scene1 = model(imgs)
             else:
                 outs1, outs2, outs3, _ = model(imgs, evaluate=True)
-
-            loss1 = 0
-            loss2 = 0
-            loss3 = 0
-
             loss1 = criterion(outs1, labels1)
             loss2 = criterion(outs2, labels2)
             loss3 = criterion(outs3, labels3)
@@ -92,11 +85,20 @@ def train_images(train_dataloader, model, criterion, optimizer, scheduler, opt, 
                 sceneloss = criterion(scene1, scenelabels)
                 loss += sceneloss
 
+            #loss /= opt.accumulate
 
         scaler.scale(loss).backward()
 
-        scaler.step(optimizer)    
-        scaler.update()
+        if ((i + 1) % opt.accumulate == 0) or (i+ 1 == len(data_iterator.dataset.data)):
+
+            running_loss += (loss * batch_size)
+            dataset_size += batch_size
+
+            epoch_loss = running_loss / dataset_size
+
+            scaler.step(optimizer) 
+            scaler.update()
+            optimizer.zero_grad()   
 
         #losses.append(loss.item())
 
