@@ -25,11 +25,7 @@ import random
 import copy
 import pickle
 
-
-
-
 from utils import VisionTransformer, get_seg_model, HRNET_48
-
 def pair(t):
     return t if isinstance(t, tuple) else (t, t)
 
@@ -249,7 +245,7 @@ class JustResNet(nn.Module):
         self.scene3 = nn.Linear(self.n_features, 365)        
         
     def forward(self, x, evaluate=False):
-        bs, ch, h, w = x.shape
+        #bs, ch, h, w = x.shape
 
         
         x = self.backbone(x)
@@ -263,7 +259,7 @@ class JustResNet(nn.Module):
         #s3 = self.scene3(x)
         
         if not evaluate:
-            return x1, x2, x3, s
+            return x1, x2, x3, s, s
         else:
             return x1, x2, x3, x
 
@@ -397,6 +393,7 @@ class IsoMax(nn.Module):
             return x3, x3, x3, x3
         else:
             return x3, x3, x3, x
+
 class GeoGuess1(nn.Module):
     def __init__(self, backbone=models.resnet50(pretrained=True), trainset='train'):
         super().__init__()
@@ -417,8 +414,8 @@ class GeoGuess1(nn.Module):
             self.classification2 = nn.Linear(self.n_features, 215)
             self.classification3 = nn.Linear(self.n_features, 520) 
 
-        self.trans = CustomTransformer1(768, 6, 12, 64, 1024, dropout=0.1)
-        self.queries = nn.Parameter(torch.rand(16, 3, 768, requires_grad=True, device='cuda'))
+        self.trans = CustomTransformer1(self.n_features, 6, 12, 64, 1024, dropout=0.1)
+        self.queries = nn.Parameter(torch.rand(16, 3, self.n_features, requires_grad=True, device='cuda'))
 
     def forward(self, x, evaluate=False):
         bs, ch, h, w = x.shape
@@ -441,10 +438,14 @@ class GeoGuess1(nn.Module):
         x2 = self.classification2(x_out[:, 1])
         x3 = self.classification3(x_out[:, 2])
 
+        # Confidence of each hierarchy
+        hier_conf = F.sigmoid(x_out[:,:,0])
+
         if not evaluate:
-            return x1, x2, x3, scene_preds
+            return x1, x2, x3, scene_preds, hier_conf
         else:
             return x1, x2, x3, x_out
+
 class MixTransformerDeTR(nn.Module):
     def __init__(self, backbone=models.resnet101(pretrained=True), trainset='train'):
         super().__init__()
@@ -547,8 +548,10 @@ class Translocator(nn.Module):
 
         if trainset in ['train', 'traintriplet']:
             self.classification1 = nn.Linear(self.n_features, 3298)
-            self.classification2 = nn.Linear(self.n_features, 7202)
-            self.classification3 = nn.Linear(self.n_features, 12893)
+            #self.classification2 = nn.Linear(self.n_features, 7202)
+            self.classification2 = FeedForward(dim=self.n_features, hidden_dim=3000, dropout = 0.1, dropout2 = 0.0, out_dim=7202)
+            #self.classification3 = nn.Linear(self.n_features, 12893)
+            self.classification3 = FeedForward(dim=self.n_features, hidden_dim=6000, dropout = 0.1, dropout2 = 0.0, out_dim=12893)
         if trainset == 'train1M':
             self.classification1 = nn.Linear(self.n_features, 689)
             self.classification2 = nn.Linear(self.n_features, 689)
@@ -598,6 +601,8 @@ class Translocator(nn.Module):
         
         return rgb
 
+from torchsummary import summary
+from ptflops import get_model_complexity_info
 if __name__ == "__main__":
 
     image = torch.rand((84,3,224,224))
@@ -622,3 +627,4 @@ if __name__ == "__main__":
 
     print('{:<30}  {:<8}'.format('Computational complexity: ', macs))
     print('{:<30}  {:<8}'.format('Number of parameters: ', params))
+

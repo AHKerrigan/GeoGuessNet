@@ -9,7 +9,6 @@ from einops import rearrange
 
 import torch
 import torch.nn.functional as F
-import pickle
 
 import geopy
 from geopy.distance import geodesic as GD
@@ -19,11 +18,7 @@ from tqdm import tqdm
 from torch.autograd import Variable
 
 import wandb
-import evaluate
-import random
 import pandas as pd
-
-import copy
 
 def train_images(train_dataloader, model, criterion, optimizer, scheduler, opt, epoch, val_dataloaders=None, scaler=None):
 
@@ -44,7 +39,7 @@ def train_images(train_dataloader, model, criterion, optimizer, scheduler, opt, 
     print("Validating every", val_cycle, "batches")
     print("Starting Epoch", epoch)
 
-    bar = tqdm(enumerate(data_iterator), total=len(data_iterator))
+    bar = tqdm(enumerate(data_iterator), total=len(data_iterator), disable=opt.cluster)
 
     for i ,(imgs, classes, scenes, gps) in bar:
 
@@ -68,13 +63,24 @@ def train_images(train_dataloader, model, criterion, optimizer, scheduler, opt, 
         # Cast to mixed precision to speed things up 
         with torch.cuda.amp.autocast():
             imgs = imgs.to(opt.device)
+
+            if opt.tencrop:
+                imgs = rearrange(imgs, 'bs crop ch h w -> (bs crop) ch h w')
             
             ##############  Get Outputs ##############
 
             if opt.scene:
-                outs1, outs2, outs3, scene1 = model(imgs)
+                outs1, outs2, outs3, scene1, _ = model(imgs)
             else:
                 outs1, outs2, outs3, _ = model(imgs, evaluate=True)
+            
+            # Handle ten crop
+            if opt.tencrop:
+                outs1 = rearrange(outs1, '(bs crop) classes -> bs crop classes', crop=10).mean(1)
+                outs2 = rearrange(outs2, '(bs crop)  classes -> bs crop classes', crop=10).mean(1)
+                outs3 = rearrange(outs3, '(bs crop) classes -> bs crop classes', crop=10).mean(1)
+                scene1 = rearrange(scene1, '(bs crop) classes -> bs crop classes', crop=10).mean(1)
+
             loss1 = criterion(outs1, labels1)
             loss2 = criterion(outs2, labels2)
             loss3 = criterion(outs3, labels3)
@@ -236,7 +242,7 @@ def train_images_filtered(train_dataloader, model, criterion, optimizer, schedul
             #eval_images(val_dataloader, model, epoch, opt)
     print("The loss of epoch", epoch, "was ", np.mean(losses))
 
-def train_images_ood(train_dataloader, model, criterion, optimizer, scheduler, opt, epoch, val_dataloaders=None):
+def train_images_ood(train_dataloader, model, criterion, optimizer, scheduler, opt, epoch, val_dataloaders=None, scaler=None):
 
     batch_times, model_times, losses = [], [], []
     accuracy_regressor, accuracy_classifier = [], []
@@ -245,7 +251,7 @@ def train_images_ood(train_dataloader, model, criterion, optimizer, scheduler, o
     data_iterator = train_dataloader 
 
     losses = []
-    running_loss = 0.0
+    running_loss = torch.tensor([0.0]).to(opt.device)
     dataset_size = 0
 
 
@@ -255,7 +261,7 @@ def train_images_ood(train_dataloader, model, criterion, optimizer, scheduler, o
     print("Validating every", val_cycle, "batches")
     print("Starting Epoch", epoch)
 
-    bar = tqdm(enumerate(data_iterator), total=len(data_iterator))
+    bar = tqdm(enumerate(data_iterator), total=len(data_iterator), disable=opt.cluster)
 
     for i ,(imgs, classes, scenes, gps) in bar:
 
@@ -271,43 +277,69 @@ def train_images_ood(train_dataloader, model, criterion, optimizer, scheduler, o
         labels2 = labels2.to(opt.device)
         labels3 = labels3.to(opt.device)
 
-        imgs = imgs.to(opt.device)
+        ##############    Scene labels     ##############
+        scenelabels = scenes[:,1]
 
-        optimizer.zero_grad()
-        
-        ##############  Get Outputs ##############
-        outs1, outs2, outs3, _ = model(imgs, evaluate=False)
+        scenelabels = scenelabels.to(opt.device)
 
-        # Get the one hot labels
-        y1 = F.one_hot(labels1, num_classes=3298)
-        y2 = F.one_hot(labels2, num_classes=7202)
-        y3 = F.one_hot(labels3, num_classes=12893)
+        # Cast to mixed precision to speed things up 
+        with torch.cuda.amp.autocast():
+            imgs = imgs.to(opt.device)
+            
+            ##############  Get Outputs ##############
 
-        #loss1 = criterion(outs1, labels1)
-        #loss2 = criterion(outs2, labels2)
-        loss3 = criterion(outs3, labels3)
+            if opt.scene:
+                outs1, outs2, outs3, scene1, conf= model(imgs)
+            else:
+                outs1, outs2, outs3, _, _ = model(imgs, evaluate=True)
+            
+            #print(conf)
 
-        #loss = loss1 + loss2 + loss3
-        loss = loss3
+            #loss1 = (criterion(outs1, labels1, reduce=False) * (conf[:,0])).mean()  
+            #loss2 = (criterion(outs2, labels2, reduce=False) * (conf[:,1])).mean()
+            #loss3 = (criterion(outs3, labels3, reduce=False) * (conf[:,2])).mean()
+    
+            loss1 = (F.cross_entropy(outs1, labels1, reduce=False) * (conf[:,0])).mean() 
+            loss2 = (F.cross_entropy(outs2, labels2, reduce=False) * (conf[:,1])).mean()
+            loss3 = (F.cross_entropy(outs3, labels3, reduce=False) * (conf[:,2])).mean()
 
-        loss.backward()
+            conf_loss = (-torch.log(conf)).sum()
+            print(f"Losses are {loss1.item()}-{loss2.item()}-{loss3.item()}-{conf_loss.item()}")
+            print(f"Some confs are {conf[0]}, {conf[5]}")
+            print(conf_loss)
 
-        optimizer.step()     
+            loss = loss1 + loss2 + loss3 + (conf_loss * 0.05)
 
-        losses.append(loss.item())
+            if opt.scene:
+                sceneloss = criterion(scene1, scenelabels)
+                loss += sceneloss
 
+            #loss /= opt.accumulate
+
+        scaler.scale(loss).backward()
+
+        if ((i + 1) % opt.accumulate == 0) or (i+ 1 == len(data_iterator.dataset.data)):
+
+            running_loss += (loss * batch_size)
+            dataset_size += batch_size
+
+            epoch_loss = running_loss / dataset_size
+
+            scaler.step(optimizer) 
+            scaler.update()
+            optimizer.zero_grad()   
+
+        #losses.append(loss.item())
+
+        running_loss += (loss * batch_size)
         dataset_size += batch_size
 
-        running_loss += (loss.item() * batch_size)
-
         epoch_loss = running_loss / dataset_size
-
-        bar.set_postfix(Epoch=epoch, Train_Loss=epoch_loss,
-                        LR=optimizer.param_groups[0]['lr'], 
-                        )
         
         step = ((epoch + 1) * opt.loss_per_epoch) + ((i+1) / loss_cycle)
         if (i+1) % loss_cycle == 0:
+            bar.set_postfix(Epoch=epoch, Train_Loss=epoch_loss.item(),
+                        LR=optimizer.param_groups[0]['lr'])
             if opt.trainset == 'train':
                 if opt.wandb: wandb.log({"Training Loss" : loss.item(), 'Step' : int(step)})
             else:
@@ -317,7 +349,6 @@ def train_images_ood(train_dataloader, model, criterion, optimizer, scheduler, o
             for val_dataloader in val_dataloaders:
                 eval_images_weighted(val_dataloader=val_dataloader, model=model, epoch=epoch, step=int(step), opt=opt)
             #eval_images(val_dataloader, model, epoch, opt)
-    print("The loss of epoch", epoch, "was ", np.mean(losses))
     
 def distance_accuracy(targets, preds, dis=2500, set='im2gps3k', trainset='train', opt=None):
     if trainset in ['train', 'traintriplet']:
@@ -356,9 +387,13 @@ def eval_images(val_dataloader, model, epoch, step, opt):
         labels = classes.cpu().numpy()
 
         imgs = imgs.to(opt.device)
+        if opt.tencrop:
+            imgs = rearrange(imgs, 'bs crop ch h w -> (bs crop) ch h w')
+
         with torch.no_grad():
             outs1, outs2, outs3, _ = model(imgs, evaluate=True)
-        cls = torch.argmax(cls, dim=-1).detach().cpu().numpy()
+
+        cls = torch.argmax(outs3, dim=-1).detach().cpu().numpy()
 
         targets.append(labels)
         preds.append(cls)
@@ -378,10 +413,13 @@ def eval_images(val_dataloader, model, epoch, step, opt):
 
         acc = distance_accuracy(targets, preds, dis=dis, trainset=opt.trainset, opt=opt)
         print("Accuracy", dis, "is", acc)
-        if opt.testset == 'im2gps3k':
-            wandb.log({ str(dis) + " Accuracy" : acc})
+        if val_dataloader.dataset.split == 'im2gps3k':
+            if opt.wandb: wandb.log({ str(dis) + " Accuracy" : acc, 'Step' : step})
+            else: print(f"{str(dis)} Accuracy at epoch {epoch} step {step}: {acc}")
         else:
-            wandb.log({opt.testset + " " +  str(dis) + " Accuracy" : acc})
+            if opt.wandb: wandb.log({val_dataloader.dataset.split + " " +  str(dis) + " Accuracy" : acc, 'Step' : step})
+            else: print(f"{str(dis)} Accuracy at epoch {epoch} step {step}: {acc}")
+
 
 
 def eval_images_weighted(val_dataloader, model, epoch, step, opt):
@@ -389,7 +427,7 @@ def eval_images_weighted(val_dataloader, model, epoch, step, opt):
 
     data_iterator = val_dataloader
 
-    bar = tqdm(enumerate(val_dataloader), total=len(val_dataloader))
+    bar = tqdm(enumerate(val_dataloader), total=len(val_dataloader), disable=opt.cluster)
 
     preds = []
     targets = []
@@ -399,14 +437,25 @@ def eval_images_weighted(val_dataloader, model, epoch, step, opt):
         labels = classes.cpu().numpy()
 
         imgs = imgs.to(opt.device)
+
+        # Handle ten crop
+        if opt.tencrop:
+            imgs = rearrange(imgs, 'bs crop ch h w -> (bs crop) ch h w')
+
         with torch.no_grad():
             outs1, outs2, outs3, _ = model(imgs, evaluate=True)
+
+        # Handle ten crop
+        if opt.tencrop:
+            outs1 = rearrange(outs1, '(bs crop) classes -> bs crop classes', crop=10).mean(1)
+            outs2 = rearrange(outs2, '(bs crop)  classes -> bs crop classes', crop=10).mean(1)
+            outs3 = rearrange(outs3, '(bs crop) classes -> bs crop classes', crop=10).mean(1)
 
         outs1 = F.softmax(outs1, dim=1)
         outs2= F.softmax(outs2, dim=1)
         outs3 = F.softmax(outs3, dim=1)
 
-        '''
+        
         coarseweights = torch.ones(outs2.shape).cuda()
         mediumweights = torch.ones(outs3.shape).cuda()
 
@@ -415,12 +464,11 @@ def eval_images_weighted(val_dataloader, model, epoch, step, opt):
 
         outs2 = outs2 * coarseweights
 
-
         for i in range(outs3.shape[1]):
             mediumweights[:,i] = outs2[:,val_dataloader.dataset.medium2fine[i]]
         outs3 = outs3 * mediumweights
 
-        '''
+        
         outs3 = torch.argmax(outs3, dim=-1).detach().cpu().numpy()
 
 

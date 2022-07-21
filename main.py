@@ -11,7 +11,7 @@ from train_and_eval import eval_images_weighted, train_images, train_images_ood,
 
 #from torch.utils.tensorboard import SummaryWriter
 import wandb
-import pickle
+import dill as pickle
 
 from torch.nn import TransformerEncoder, TransformerEncoderLayer
 #from networks import GeoCLIP, VGGTriplet, BasicNetVLAD
@@ -20,12 +20,6 @@ from config import getopt
 import copy
 import torch.distributed as dist
 #from torchsummary import summary
-
-import torch.distributed as dist
-from torch.utils.data.distributed import DistributedSampler
-
-
-
 opt = getopt()
 
 
@@ -91,7 +85,7 @@ if opt.gpus > 1:
 
 
 _ = model.to(opt.device)
-opt.wandb: wandb.watch(model, criterion, log="all")
+if opt.wandb: wandb.watch(model, criterion, log="all")
 
 acc10 = 0
 for epoch in range(opt.n_epochs): 
@@ -104,7 +98,7 @@ for epoch in range(opt.n_epochs):
         #train_one_epoch_temp1(train_dataloader, model, optimizer, opt, epoch, writer)
         #train_single_frame(train_dataloader=train_dataloader, model=model, criterion=criterion, optimizer=optimizer, scheduler=scheduler, opt=opt, epoch=epoch, writer=writer)
         train_images(train_dataloader=train_dataloader, model=model, criterion=criterion, optimizer=optimizer, scheduler=scheduler, opt=opt, epoch=epoch, val_dataloaders=val_dataloaders, scaler=scaler)
-        #train_images_ood(train_dataloader=train_dataloader, model=model, criterion=criterion, optimizer=optimizer, scheduler=scheduler, opt=opt, epoch=epoch, val_dataloaders=val_dataloaders)
+        #train_images_ood(train_dataloader=train_dataloader, model=model, criterion=criterion, optimizer=optimizer, scheduler=scheduler, opt=opt, epoch=epoch, val_dataloaders=val_dataloaders, scaler=scaler)
         #train_images_filtered(train_dataloader, model, criterion, optimizer, scheduler, opt, epoch, val_dataloader=val_dataloader, original_model=dup_model)
 
     #eval_one_epoch(val_dataloader=val_dataloader, model=model, epoch=epoch, opt=opt, writer=writer)

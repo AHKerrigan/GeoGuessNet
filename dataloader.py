@@ -48,29 +48,51 @@ def my_transform():
 	video_transform = Compose(video_transform_list)
 	return  video_transform
 
-def m16_transform():
+def m16_transform(opt):
 
-    m16_transform_list = transforms.Compose([
-        transforms.RandomAffine((1, 15)),
-        transforms.ColorJitter(brightness=0.4, contrast=0.4, saturation=0.4, hue=0.1),
-        transforms.RandomHorizontalFlip(p=0.5),
-        transforms.Resize(256),
-        transforms.RandomCrop(224),
-        #transforms.TenCrop(224),
-        #transforms.Lambda(lambda crops: torch.stack([transforms.PILToTensor()(crop) for crop in crops])),
-        transforms.PILToTensor(),
-        transforms.ConvertImageDtype(torch.float),
-        transforms.Normalize((0.485, 0.456, 0.406), (0.229, 0.224, 0.225))
-    ])
+    if opt.tencrop == True:
+        m16_transform_list = transforms.Compose([
+            transforms.RandomAffine((1, 15)),
+            transforms.ColorJitter(brightness=0.4, contrast=0.4, saturation=0.4, hue=0.1),
+            transforms.RandomHorizontalFlip(p=0.5),
+            transforms.Resize(256),
+            transforms.TenCrop(224),
+            transforms.Lambda(lambda crops: torch.stack([transforms.PILToTensor()(crop) for crop in crops])),
+            #transforms.PILToTensor(),
+            transforms.ConvertImageDtype(torch.float),
+            transforms.Normalize((0.485, 0.456, 0.406), (0.229, 0.224, 0.225))
+        ])
+    else:
+        m16_transform_list = transforms.Compose([
+            transforms.RandomAffine((1, 15)),
+            transforms.ColorJitter(brightness=0.4, contrast=0.4, saturation=0.4, hue=0.1),
+            transforms.RandomHorizontalFlip(p=0.5),
+            transforms.Resize(256),
+            transforms.RandomCrop(224),
+            #transforms.TenCrop(224),
+            #transforms.Lambda(lambda crops: torch.stack([transforms.PILToTensor()(crop) for crop in crops])),
+            transforms.PILToTensor(),
+            transforms.ConvertImageDtype(torch.float),
+            transforms.Normalize((0.485, 0.456, 0.406), (0.229, 0.224, 0.225))
+        ])
     return m16_transform_list
-def m16_val_transform():
-    m16_transform_list = transforms.Compose([
-        transforms.Resize(256),
-        transforms.CenterCrop(224),
-        transforms.PILToTensor(),
-        transforms.ConvertImageDtype(torch.float),
-        transforms.Normalize((0.485, 0.456, 0.406), (0.229, 0.224, 0.225))
-    ])
+def m16_val_transform(opt):
+    if opt.tencrop == True:
+        m16_transform_list = transforms.Compose([
+            transforms.Resize(256),
+            transforms.TenCrop(224),
+            transforms.Lambda(lambda crops: torch.stack([transforms.PILToTensor()(crop) for crop in crops])),
+            transforms.ConvertImageDtype(torch.float),
+            transforms.Normalize((0.485, 0.456, 0.406), (0.229, 0.224, 0.225))
+        ])
+    else:
+        m16_transform_list = transforms.Compose([
+            transforms.Resize(256),
+            transforms.CenterCrop(224),
+            transforms.PILToTensor(),
+            transforms.ConvertImageDtype(torch.float),
+            transforms.Normalize((0.485, 0.456, 0.406), (0.229, 0.224, 0.225))
+        ])
     return m16_transform_list    
 
 def get_mp16_train(classfile="mp16_places365_mapping_h3.json", gpsfile="mp16_places365.csv", opt=None):
@@ -269,9 +291,9 @@ class M16Dataset(Dataset):
 
         print("Loaded data, total vids", len(fnames))
         if self.split in ['train', 'trainbdd']:
-            self.transform = m16_transform()
+            self.transform = m16_transform(opt)
         else:
-            self.transform = m16_val_transform()
+            self.transform = m16_val_transform(opt)
 
     def __getitem__(self, idx):
 
@@ -290,9 +312,12 @@ class M16Dataset(Dataset):
         try:
             vid = im.open(sample).convert('RGB')
             vid = self.transform(vid)
-        except:
+            #print(vid.shape)
+        except Exception as e:
             print(f"Failed to load {sample}!", flush=True)
-            vid = torch.rand(3,224,224)
+            print(e)
+            vid = torch.rand(10,3,224,224)
+        #print(vid.shape)
 
         #print(self.classes[idx])
         if self.split in ['train', 'train1M', 'trainbdd'] :
@@ -303,120 +328,3 @@ class M16Dataset(Dataset):
     def __len__(self):
         return len(self.data)
 
-
-
-import argparse
-import config
-import pickle
-
-import pandas as pd
-from sklearn.manifold import TSNE
-from sklearn.datasets import load_iris
-from numpy import reshape
-import seaborn as sns
-import pandas as pd  
-from transformers import ViTFeatureExtractor, ViTModel
-
-from train_and_eval import eval_images_weighted
-
-import numpy as np
-
-from sklearn.cluster import DBSCAN
-from sklearn import metrics
-from sklearn.datasets import make_blobs
-from sklearn.preprocessing import StandardScaler
-
- # clustering dataset
-from sklearn.cluster import KMeans
-from sklearn import metrics
-import numpy as np
-import matplotlib.pyplot as plt
-from sklearn.manifold import TSNE
-
-
-from hdbscan import HDBSCAN
-
-from geopy.distance import great_circle as GCD
-def distance_accuracy(targets, preds, dis=2500, set='im2gps3k', trainset='train', opt=None):
-    if trainset in ['train', 'traintriplet']:
-        coarse_gps = pd.read_csv(opt.resources + "cells_50_1000.csv") 
-    if trainset == 'train1M':
-        coarse_gps = pd.read_csv(opt.resources + "cells_50_1000_images_1M.csv")
-    if trainset == 'trainbdd':
-        coarse_gps = pd.read_csv(opt.resources + "BDD-50-200images.csv")        
-
-    course_preds = list(coarse_gps.iloc[preds][['latitude_mean', 'longitude_mean']].to_records(index=False))
-    course_target = [(x[0], x[1]) for x in targets]   
-
-    total = len(course_target)
-    correct = 0
-
-    for i in range(len(course_target)):
-        #print(GD(course_preds[i], course_target[i]).km)
-        #if GD(course_preds[i], course_target[i]).km <= dis:
-        if GCD(course_preds[i], course_target[i]).km <= dis:
-            correct += 1
-
-    return correct / total
-
-if __name__ == "__main__":
-
-
-    opt = config.getopt()
-
-    coarse2medium = {}
-    medium2fine = {}
-
-    model = JustResNet()
-    model.load_state_dict(torch.load("/home/alec/Documents/GeoGuessNet/weights/ResNet50+Hier+Scenes+NewData.pth"))
-    #model.load_state_dict(torch.load("/home/alec/Documents/GeoGuessNet/weights/Testing OOD.pth")['state_dict'])
-    
-    
-    #model = ViTModel.from_pretrained("google/vit-base-patch16-224-in21k")
-    _ = model.to(opt.device)
-    
-    #train_dataset = M16Dataset(split='train', opt=opt)
-    #pickle.dump(train_dataset, open("weights/datasettemp.pkl", "wb"))
-
-    train_dataset = pickle.load(open("weights/datasettemp.pkl", "rb"))
-
-    train_dataloader = torch.utils.data.DataLoader(train_dataset, batch_size=opt.batch_size, num_workers=opt.kernels, shuffle=False, drop_last=False)
-
-    #eval_images_weighted(train_dataloader, model, 1, 1, opt)
-    bar = tqdm(enumerate(train_dataloader), total=len(train_dataloader))
-
-    total = 0
-    all_embeds = []
-
-    all = []
-    for i ,(imgs, classes, scenes, gps, samples) in bar:
-        #coarse_classes = classes[:,0].to(opt.device)
-        #medium_classes = classes[:,1]
-        imgs = imgs.to(opt.device)
-        labels = classes[:,2].to(opt.device)
-
-        with torch.no_grad():
-            x1, x2, x3, _ = model(imgs, evaluate=True)
-        #x = model(imgs).pooler_output.cpu().numpy()
-
-
-        out = F.cross_entropy(x3, labels, reduce=False)
-        all.append(out.cpu().numpy())
-        #mask = out <= 2.96671324968338
-        #indices = torch.nonzero(mask).squeeze(1).tolist()
-
-        #samples = [x for x in samples]
-
-        #if len(samples) > 0:
-        #    good_samples = [samples[i] for i in indices]
-
-        #print(good_samples)
-
-        if i > 1000:
-            break
-
-
-    all = np.concatenate(all, axis=0)
-    print(np.quantile(all, 0.95))
-    plt.hist(all)
-    plt.savefig("weights/hist.jpg")

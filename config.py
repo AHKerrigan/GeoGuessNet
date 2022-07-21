@@ -8,7 +8,8 @@ def getopt():
     parser = argparse.ArgumentParser()
 
     
-    opt = parser.parse_args()
+    #opt = parser.parse_args()
+    opt = parser.parse_known_args()[0]
     opt.gpus = 1
     opt.kernels = multiprocessing.cpu_count()
     #pt.kernels = opt.gpus * 4
@@ -25,8 +26,9 @@ def getopt():
     opt.n_epochs = 20
 
     #opt.description = 'GeoGuess4-4.2M-Im2GPS3k-F*'
-    opt.description = 'Accumulate Test'
+    opt.description = 'Testing ten crop'
     opt.evaluate = False
+    opt.cluster = False
 
     # How often to report loss
     opt.loss_per_epoch = 100
@@ -37,17 +39,18 @@ def getopt():
     opt.lr = 0.01
     opt.step_size = 4
     opt.hier_eval = True
-    opt.scene = False
+    opt.scene = True
     opt.mixed_pres = True
+    opt.tencrop = True
     
     opt.loss = 'ce'
     opt.model = 'JustResNet'
     opt.archname = opt.model
 
-    opt.wandb = True
+    opt.wandb = False
 
-    opt.batch_size = 256
-    opt.accumulate = 2
+    opt.batch_size = 12
+    opt.accumulate = 20
     opt.distances = [2500, 750, 200, 25, 1]
     opt.trainset = 'train'
     opt.testset1 = 'im2gps3k'
