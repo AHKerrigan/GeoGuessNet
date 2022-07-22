@@ -316,12 +316,9 @@ class M16Dataset(Dataset):
         try:
             vid = im.open(sample).convert('RGB')
             vid = self.transform(vid)
-            if self.tencrop != None:
-                vid = self.tencrop(vid)
-            vid = torch.stack([crop for crop in vid])
+
         except Exception as e:
             print(f"Failed to load {sample}!", flush=True)
-            print(e)
             vid = torch.rand(10,3,224,224)
             
         #print(vid.shape)
