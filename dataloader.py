@@ -58,7 +58,7 @@ def m16_transform(opt):
             transforms.Resize(256),
             transforms.TenCrop(224),
             transforms.Lambda(lambda crops: torch.stack([transforms.PILToTensor()(crop) for crop in crops])),
-            #transforms.PILToTensor(),
+            transforms.PILToTensor(),
             transforms.ConvertImageDtype(torch.float),
             transforms.Normalize((0.485, 0.456, 0.406), (0.229, 0.224, 0.225))
         ])
@@ -82,6 +82,7 @@ def m16_val_transform(opt):
             transforms.Resize(256),
             transforms.TenCrop(224),
             transforms.Lambda(lambda crops: torch.stack([transforms.PILToTensor()(crop) for crop in crops])),
+            transforms.PILToTensor(),
             transforms.ConvertImageDtype(torch.float),
             transforms.Normalize((0.485, 0.456, 0.406), (0.229, 0.224, 0.225))
         ])
@@ -288,12 +289,15 @@ class M16Dataset(Dataset):
         self.fnames, self.classes, self.scenes, self.gps = list(self.fnames), list(self.classes), list(self.scenes), list(self.gps)
 
         self.data = self.fnames
+        self.tencrop = None
 
         print("Loaded data, total vids", len(fnames))
         if self.split in ['train', 'trainbdd']:
             self.transform = m16_transform(opt)
         else:
             self.transform = m16_val_transform(opt)
+        if opt.tencrop:
+            self.tencrop = transforms.TenCrop(224)
 
     def __getitem__(self, idx):
 
@@ -312,18 +316,21 @@ class M16Dataset(Dataset):
         try:
             vid = im.open(sample).convert('RGB')
             vid = self.transform(vid)
-            #print(vid.shape)
+            if self.tencrop != None:
+                vid = self.tencrop(vid)
+            vid = torch.stack([crop for crop in vid])
         except Exception as e:
             print(f"Failed to load {sample}!", flush=True)
             print(e)
             vid = torch.rand(10,3,224,224)
+            
         #print(vid.shape)
 
         #print(self.classes[idx])
         if self.split in ['train', 'train1M', 'trainbdd'] :
             return vid, torch.Tensor(self.classes[idx]).to(torch.int64), torch.Tensor(self.scenes[idx]).to(torch.int64), torch.Tensor(self.gps[idx])
         else:
-            return vid, torch.Tensor(self.gps[idx])
+            return vid, np.array(self.gps[idx])
 
     def __len__(self):
         return len(self.data)

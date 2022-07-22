@@ -23,24 +23,26 @@ import torch.distributed as dist
 opt = getopt()
 
 
-config = {
-    'learning_rate' : opt.lr,
-    'epochs' : opt.n_epochs,
-    'batch_size' : opt.batch_size,
-    'architecture' : opt.archname
-}
+if opt.wandb:
+    config = {
+        'learning_rate' : opt.lr,
+        'epochs' : opt.n_epochs,
+        'batch_size' : opt.batch_size,
+        'architecture' : opt.archname
+    }
 
-wandb.init(project='geoguessnet', 
-        entity='crcvgeo',
-        config=config)
-wandb.run.name = opt.description
-wandb.save()
+    wandb.init(project='geoguessnet', 
+            entity='crcvgeo',
+            config=config)
+    wandb.run.name = opt.description
+    wandb.save()
 
 
 
 #train_dataset = dataloader.M16Dataset(split=opt.trainset, opt=opt)
-#pickle.dump(train_dataset, open("weights/train_dataset.pkl", "wb"))
-train_dataset = pickle.load(open("weights/train_dataset.pkl", "rb"))
+#pickle.dump(train_dataset, open("weights/train_datasets.pkl", "wb"))
+with open("weights/train_datasets.pkl", "rb") as f:
+    train_dataset = pickle.load(f)
 val_dataset1 = dataloader.M16Dataset(split=opt.testset1, opt=opt)
 val_dataset2 = dataloader.M16Dataset(split=opt.testset2, opt=opt)
 

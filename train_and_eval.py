@@ -124,7 +124,8 @@ def train_images(train_dataloader, model, criterion, optimizer, scheduler, opt, 
             #print("interation", i, "of", len(data_iterator))
         if val_dataloaders != None and i % val_cycle == 0:
             for val_dataloader in val_dataloaders:
-                eval_images_weighted(val_dataloader=val_dataloader, model=model, epoch=epoch, step=int(step), opt=opt)
+                #eval_images_weighted(val_dataloader=val_dataloader, model=model, epoch=epoch, step=int(step), opt=opt)
+                eval_images(val_dataloader=val_dataloader, model=model, epoch=epoch, step=int(step), opt=opt)
             #eval_images(val_dataloader, model, epoch, opt)
 
 def train_images_filtered(train_dataloader, model, criterion, optimizer, scheduler, opt, epoch, val_dataloader=None, original_model=None):
@@ -257,6 +258,7 @@ def train_images_ood(train_dataloader, model, criterion, optimizer, scheduler, o
 
     loss_cycle = (len(data_iterator.dataset.data) // (opt.batch_size * opt.loss_per_epoch))
     val_cycle = (len(data_iterator.dataset.data) // (opt.batch_size * opt.val_per_epoch))
+
     print("Outputting loss every", loss_cycle, "batches")
     print("Validating every", val_cycle, "batches")
     print("Starting Epoch", epoch)
@@ -383,29 +385,33 @@ def eval_images(val_dataloader, model, epoch, step, opt):
     targets = []
 
     for i, (imgs, classes) in bar:
+        
+        
+        labels = np.copy(classes)
+        #labels = torch.rand(12, 2)
 
-        labels = classes.cpu().numpy()
-
+        
         imgs = imgs.to(opt.device)
         if opt.tencrop:
             imgs = rearrange(imgs, 'bs crop ch h w -> (bs crop) ch h w')
 
         with torch.no_grad():
-            outs1, outs2, outs3, _ = model(imgs, evaluate=True)
+            #outs1, outs2, outs3, _ = model(imgs, evaluate=True)
+            outs3 = torch.rand(120, 12893).to(opt.device)
+        
+        if opt.tencrop:
+            outs3 = rearrange(outs3, '(bs crop) classes -> bs crop classes', crop=10).mean(1)
+        
 
-        cls = torch.argmax(outs3, dim=-1).detach().cpu().numpy()
+        cls = torch.argmax(outs3, dim=-1).cpu().numpy()
 
         targets.append(labels)
         preds.append(cls)
+        
+
 
     preds = np.concatenate(preds, axis=0)
     targets = np.concatenate(targets, axis=0)
-
-    '''
-    macrof1 = f1_score(targets, preds, average='macro')
-    weightedf1 = f1_score(targets, preds, average='weighted')
-    accuracy =  accuracy_score(targets, preds)
-    '''
     #np.set_printoptions(precision=15)
     #print(targets)
     accuracies = []
@@ -419,6 +425,7 @@ def eval_images(val_dataloader, model, epoch, step, opt):
         else:
             if opt.wandb: wandb.log({val_dataloader.dataset.split + " " +  str(dis) + " Accuracy" : acc, 'Step' : step})
             else: print(f"{str(dis)} Accuracy at epoch {epoch} step {step}: {acc}")
+    
 
 
 
