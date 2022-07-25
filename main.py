@@ -54,7 +54,7 @@ val_dataloader2 = torch.utils.data.DataLoader(val_dataset2, batch_size=opt.batch
 val_dataloaders = [val_dataloader1, val_dataloader2]
 
 if opt.loss == 'ce':
-    criterion = torch.nn.CrossEntropyLoss().to(opt.device)
+    criterion = torch.nn.CrossEntropyLoss(label_smoothing=0.1).to(opt.device)
 if opt.loss == 'isomax':
     criterion = networks.IsoMaxLoss()
 
@@ -64,6 +64,8 @@ if opt.model == 'JustResNet':
 if opt.model == 'JustResNetOOD':
     model = networks.JustResNetOOD(trainset=opt.trainset)
 if opt.model == 'GeoGuess1':
+    model = networks.GeoGuess1(trainset=opt.trainset)
+if opt.model == 'GeoGuess2':
     model = networks.GeoGuess1(trainset=opt.trainset)
 if opt.model == 'translocator':
     model = networks.Translocator(trainset='train')

@@ -23,10 +23,10 @@ def getopt():
 
     opt.size = 224
 
-    opt.n_epochs = 20
+    opt.n_epochs = 25
 
     #opt.description = 'GeoGuess4-4.2M-Im2GPS3k-F*'
-    opt.description = 'Testing ten crop'
+    opt.description = 'Testing lightning'
     opt.evaluate = False
     opt.cluster = False
 
@@ -41,16 +41,16 @@ def getopt():
     opt.hier_eval = True
     opt.scene = True
     opt.mixed_pres = True
-    opt.tencrop = True
+    opt.tencrop = False
     
     opt.loss = 'ce'
     opt.model = 'JustResNet'
     opt.archname = opt.model
 
-    opt.wandb = False
+    opt.wandb = True
 
-    opt.batch_size = 12
-    opt.accumulate = 10
+    opt.batch_size = 128
+    opt.accumulate = 4
     opt.distances = [2500, 750, 200, 25, 1]
     opt.trainset = 'train'
     opt.testset1 = 'im2gps3k'

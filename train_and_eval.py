@@ -3,8 +3,6 @@ from scipy.spatial.distance import cdist
 from sklearn.metrics import accuracy_score, f1_score
 import numpy as np
 
-from colorama import Fore, Style
-
 from einops import rearrange
 
 import torch
@@ -32,9 +30,15 @@ def train_images(train_dataloader, model, criterion, optimizer, scheduler, opt, 
     running_loss = torch.tensor([0.0]).to(opt.device)
     dataset_size = 0
 
-
     loss_cycle = (len(data_iterator.dataset.data) // (opt.batch_size * opt.loss_per_epoch))
     val_cycle = (len(data_iterator.dataset.data) // (opt.batch_size * opt.val_per_epoch))
+
+    # We want to loss/val cycle to be consistent with the accumulator 
+    while loss_cycle % opt.accumulate != 0:
+        loss_cycle += 1
+    while val_cycle % opt.accumulate != 0:
+        val_cycle += 1
+
     print("Outputting loss every", loss_cycle, "batches")
     print("Validating every", val_cycle, "batches")
     print("Starting Epoch", epoch)
@@ -124,8 +128,11 @@ def train_images(train_dataloader, model, criterion, optimizer, scheduler, opt, 
             #print("interation", i, "of", len(data_iterator))
         if val_dataloaders != None and i % val_cycle == 0:
             for val_dataloader in val_dataloaders:
-                #eval_images_weighted(val_dataloader=val_dataloader, model=model, epoch=epoch, step=int(step), opt=opt)
-                eval_images(val_dataloader=val_dataloader, model=model, epoch=epoch, step=int(step), opt=opt)
+                try:
+                    eval_images_weighted(val_dataloader=val_dataloader, model=model, epoch=epoch, step=int(step), opt=opt)
+                    #eval_images(val_dataloader=val_dataloader, model=model, epoch=epoch, step=int(step), opt=opt)
+                except:
+                    print("Evaluation died")
             #eval_images(val_dataloader, model, epoch, opt)
 
 def train_images_filtered(train_dataloader, model, criterion, optimizer, scheduler, opt, epoch, val_dataloader=None, original_model=None):

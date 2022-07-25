@@ -58,7 +58,7 @@ def m16_transform(opt):
             transforms.Resize(256),
             transforms.TenCrop(224),
             transforms.Lambda(lambda crops: torch.stack([transforms.PILToTensor()(crop) for crop in crops])),
-            transforms.PILToTensor(),
+            #transforms.PILToTensor(),
             transforms.ConvertImageDtype(torch.float),
             transforms.Normalize((0.485, 0.456, 0.406), (0.229, 0.224, 0.225))
         ])
@@ -282,13 +282,16 @@ class M16Dataset(Dataset):
                 self.medium2fine[1019] = 0
                 self.medium2fine[4595] = 0
                 self.medium2fine[4687] = 0
+
+        self.fnames, self.classes, self.scenes, self.gps = np.array(fnames), np.array(classes), np.array(scenes), np.array(gps)
         
+        '''
         temp = list(zip(fnames, classes, scenes, gps))
         np.random.shuffle(temp)
-        self.fnames, self.classes, self.scenes, self.gps = zip(*temp)
-        self.fnames, self.classes, self.scenes, self.gps = list(self.fnames), list(self.classes), list(self.scenes), list(self.gps)
-
-        self.data = self.fnames
+        fnames, classes, scenes, gps = zip(*temp)
+        fnames, classes, scenes, gps = list(fnames), list(classes), list(scenes), list(gps)
+        self.fnames, self.classes, self.scenes, self.gps = np.array(fnames), np.array(self.classes), np.array(self.scenes), np.array(self.gps)
+        '''
         self.tencrop = None
 
         print("Loaded data, total vids", len(fnames))
@@ -302,7 +305,7 @@ class M16Dataset(Dataset):
     def __getitem__(self, idx):
 
         #print(self.data[0])
-        sample = self.data[idx]
+        sample = self.fnames[idx]
         '''
         coords = []
         if not self.one_frame:
@@ -320,6 +323,8 @@ class M16Dataset(Dataset):
         except Exception as e:
             print(f"Failed to load {sample}!", flush=True)
             vid = torch.rand(10,3,224,224)
+        
+
             
         #print(vid.shape)
 
@@ -330,5 +335,5 @@ class M16Dataset(Dataset):
             return vid, np.array(self.gps[idx])
 
     def __len__(self):
-        return len(self.data)
+        return len(self.fnames)
 

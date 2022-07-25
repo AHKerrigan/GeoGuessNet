@@ -2,7 +2,7 @@
 #from msilib.schema import Feature
 from torch.nn import TransformerEncoder, TransformerEncoderLayer
 
-from positional_encodings import PositionalEncoding1D
+from positional_encodings.torch_encodings import PositionalEncoding1D
 
 from einops import rearrange, repeat
 from einops.layers.torch import Rearrange
@@ -20,6 +20,7 @@ from geopy.distance import lonlat, distance
 
 from utilities.detrstuff import nested_tensor_from_tensor_list
 from transformers import ViTModel, DetrForSegmentation
+from transformers import SwinModel
 import random
 
 import copy
@@ -174,42 +175,8 @@ class CustomTransformer1(nn.Module):
             x = ff(x) + x
         return x
 
-class BasicDETR(nn.Module):
-    def __init__(self, n_hier=8):
-        super().__init__()
-
-        #self.detr = torch.hub.load('facebookresearch/detr:main', 'detr_resnet50', pretrained=True)
-        self.feature_extractor = DetrFeatureExtractor.from_pretrained("facebook/detr-resnet-50-panoptic")
-        self.detr = DetrForSegmentation.from_pretrained("facebook/detr-resnet-50-panoptic")
-
-        decoder_layer = nn.TransformerDecoderLayer(d_model=256, nhead=4, batch_first=True)
-        self.hier_decoder = nn.TransformerDecoder(decoder_layer, num_layers=6)
-
-        self.hier_query = torch.rand((n_hier, 256)).cuda()
-
-        self.classifier0 = nn.Linear(256, 4)
-
-    def forward(self, x):
-        bs, ch, h, w = x.shape
-
-        # Remove the frame dimension
-        #x = x[:,:,0,:,:]
-        #print(x.shape)
-
-        #inputs = self.feature_extractor.pad_and_create_pixel_mask(pixel_values_list=x, return_tensors="pt")
-        #inputs = self.feature_extractor(images=x, return_tensors="pt")
-        #print(inputs)
-        detr_outputs = self.detr(x).last_hidden_state
-        hier_qs = self.hier_query.unsqueeze(0).repeat(bs, 1, 1)
-
-        x = self.hier_decoder(hier_qs, detr_outputs)
-        class0 = self.classifier0(x[:, 0, :])
-
-
-        return F.relu(class0)
-
 class JustResNet(nn.Module):
-    def __init__(self, backbone=models.resnet50(pretrained=True), trainset='train'):
+    def __init__(self, backbone=models.resnet18(weights='ResNet18_Weights.DEFAULT'), trainset='train'):
         super().__init__()
 
         
@@ -264,7 +231,7 @@ class JustResNet(nn.Module):
             return x1, x2, x3, x
 
 class JustResNetOOD(nn.Module):
-    def __init__(self, backbone=models.resnet50(pretrained=True), trainset='train'):
+    def __init__(self, backbone=models.resnet50(weights='ResNet50_Weights.DEFAULT'), trainset='train'):
         super().__init__()
 
         
@@ -308,9 +275,9 @@ class JustResNetOOD(nn.Module):
         x2 = F.softmax(self.classification2(x), dim=-1)
         x3 = F.softmax(self.classification3(x), dim=-1)
 
-        c1 = F.sigmoid(self.conf1(x))
-        c2 = F.sigmoid(self.conf2(x))
-        c3 = F.sigmoid(self.conf3(x))
+        c1 = torch.sigmoid(self.conf1(x))
+        c2 = torch.sigmoid(self.conf2(x))
+        c3 = torch.sigmoid(self.conf3(x))
 
         if not evaluate:
             return x1, x2, x3, c1, c2, c3
@@ -331,7 +298,7 @@ class IsoMaxLoss(nn.Module):
         return loss
 
 class IsoMax(nn.Module):
-    def __init__(self, backbone=models.resnet50(pretrained=True), trainset='train'):
+    def __init__(self, backbone=models.resnet50(weights='ResNet50_Weights.DEFAULT'), trainset='train'):
         super().__init__()
 
         
@@ -395,7 +362,8 @@ class IsoMax(nn.Module):
             return x3, x3, x3, x
 
 class GeoGuess1(nn.Module):
-    def __init__(self, backbone=models.resnet50(pretrained=True), trainset='train'):
+
+    def __init__(self, trainset='train'):
         super().__init__()
 
         self.backbone = ViTModel.from_pretrained("google/vit-base-patch16-224-in21k")
@@ -414,7 +382,7 @@ class GeoGuess1(nn.Module):
             self.classification2 = nn.Linear(self.n_features, 215)
             self.classification3 = nn.Linear(self.n_features, 520) 
 
-        self.trans = CustomTransformer1(self.n_features, 6, 12, 64, 1024, dropout=0.1)
+        self.trans = CustomTransformer1(self.n_features, 6, 12, 64, 1024, dropout=0.0)
         self.queries = nn.Parameter(torch.rand(16, 3, self.n_features, requires_grad=True, device='cuda'))
 
     def forward(self, x, evaluate=False):
@@ -439,7 +407,132 @@ class GeoGuess1(nn.Module):
         x3 = self.classification3(x_out[:, 2])
 
         # Confidence of each hierarchy
-        hier_conf = F.sigmoid(x_out[:,:,0])
+        hier_conf = torch.sigmoid(x_out[:,:,0])
+
+        if not evaluate:
+            return x1, x2, x3, scene_preds, hier_conf
+        else:
+            return x1, x2, x3, x_out
+
+class TwoScaleDecoderBlock(nn.Module):
+    def __init__(self, dim = 768, heads = 12, dim_head=64, dropout=0.1, mlp_dim=1024):
+        super().__init__()
+        
+        self.dim = dim
+        self.s1_sa = nn.Sequential(
+            nn.LayerNorm(dim),
+            Attention(dim, heads = heads, dim_head = dim_head, dropout = dropout),
+        )
+        self.s2_sa = nn.Sequential(
+            nn.LayerNorm(dim),
+            Attention(dim, heads = heads, dim_head = dim_head, dropout = dropout),
+        )
+        self.cs_sa = nn.Sequential(
+            nn.LayerNorm(dim),
+            Attention(dim * 2, heads = heads, dim_head = dim_head, dropout = dropout),
+        )
+
+        self.s1_ff = nn.Sequential(
+            nn.LayerNorm(dim),
+            FeedForward(dim, mlp_dim, dropout = dropout),
+        )
+        self.s2_ff = nn.Sequential(
+            nn.LayerNorm(dim),
+            FeedForward(dim, mlp_dim, dropout = dropout),
+        )
+
+        self.s1_ca_ln = nn.LayerNorm(dim)
+        self.s2_ca_ln = nn.LayerNorm(dim)
+        self.s1_ca_attn = CustomAttention(dim, heads = heads, dim_head = dim_head, dropout = dropout)
+        self.s2_ca_attn = CustomAttention(dim, heads = heads, dim_head = dim_head, dropout = dropout)
+
+        
+
+    def forward(self, scale1, scale2, q1, q2):
+
+        q1 = self.s1_sa(q1) + q1
+        q2 = self.s2_sa(q2) + q2
+
+        qx = torch.cat((q1, q2), dim=-1)
+        qx = self.cs_sa(qx) + qx
+
+        q1 = qx[:, :, :self.dim]
+        q2 = qx[:, :, self.dim:]
+
+        q1 = self.s1_ca_ln(q1)
+        q2 = self.s2_ca_ln(q2)
+
+        q1 = self.s1_ca_attn(q1, scale1, scale1) + q1
+        q2 = self.s2_ca_attn(q2, scale2, scale2) + q2
+
+        q1 = self.s1_ff(q1) + q1
+        q2 = self.s2_ff(q2) + q2
+
+        return q1, q2
+
+
+class GeoGuess2(nn.Module):
+    def __init__(self, decoder_depth = 5, trainset='train'):
+        super().__init__()
+
+        self.backbone = SwinModel.from_pretrained("microsoft/swin-base-patch4-window7-224-in22k", output_hidden_states=True)
+        self.n_features = 768
+        
+        if trainset in ['train', 'traintriplet']:
+            self.classification1 = nn.Linear(self.n_features * 2, 3298)
+            self.classification2 = nn.Linear(self.n_features * 2, 7202)
+            self.classification3 = nn.Linear(self.n_features * 2, 12893)
+        if trainset == 'train1M':
+            self.classification1 = nn.Linear(self.n_features * 2, 689)
+            self.classification2 = nn.Linear(self.n_features * 2, 689)
+            self.classification3 = nn.Linear(self.n_features * 2, 689)
+        if trainset == 'bddtrain':
+            self.classification1 = nn.Linear(self.n_features * 2, 49)
+            self.classification2 = nn.Linear(self.n_features * 2, 215)
+            self.classification3 = nn.Linear(self.n_features * 2, 520) 
+
+        self.q1 = nn.Parameter(torch.rand(16, 3, self.n_features, requires_grad=True, device='cuda'))
+        self.q2 = nn.Parameter(torch.rand(16, 3, self.n_features, requires_grad=True, device='cuda'))
+
+        self.decoders = nn.ModuleList([])
+        for _ in range(decoder_depth):
+            TwoScaleDecoderBlock(dim=self.n_features, heads=12, dim_head=64, dropout=0.1, mlp_dim=1024)
+
+    def forward(self, x, evaluate=False):
+        bs, ch, h, w = x.shape
+
+        q1 = rearrange(self.q1, 'scenes hiers dim -> 1 (scenes hiers) dim').repeat(bs, 1, 1)
+        q2 = rearrange(self.q2, 'scenes hiers dim -> 1 (scenes hiers) dim').repeat(bs, 1, 1)
+
+        x = self.backbone(x).hidden_states
+        scale1 = x[-3]
+        scale2 = x[-1]
+
+        for decoder in self.decoders:
+            q1, q2 = decoder(scale1, scale2, q1, q2)
+
+
+        x1_out = rearrange(q1, 'bs (scenes hiers) dim -> bs scenes hiers dim', hiers=3)
+        x2_out = rearrange(q2, 'bs (scenes hiers) dim -> bs scenes hiers dim', hiers=3)
+
+        scene_preds1 = x1_out[:,:,:,0].mean(2)
+        scene_preds2 = x2_out[:,:,:,0].mean(2)
+
+        scene_choice1 = torch.argmax(scene_preds1, dim=1)
+        scene_choice2 = torch.argmax(scene_preds2, dim=1)
+
+        x1_out = x1_out[torch.arange(bs), scene_choice1]
+        x2_out = x2_out[torch.arange(bs), scene_choice2]
+
+        x_out = torch.cat((x1_out, x2_out), dim=-1)
+        scene_preds = (scene_preds1 + scene_preds2) / 2
+        
+        x1 = self.classification1(x_out[:, 0])
+        x2 = self.classification2(x_out[:, 1])
+        x3 = self.classification3(x_out[:, 2])
+
+        # Confidence of each hierarchy
+        hier_conf = torch.sigmoid(x_out[:,:,0])
 
         if not evaluate:
             return x1, x2, x3, scene_preds, hier_conf
@@ -447,7 +540,7 @@ class GeoGuess1(nn.Module):
             return x1, x2, x3, x_out
 
 class MixTransformerDeTR(nn.Module):
-    def __init__(self, backbone=models.resnet101(pretrained=True), trainset='train'):
+    def __init__(self, backbone=models.resnet101(weights='ResNet101_Weights.DEFAULT'), trainset='train'):
         super().__init__()
 
         self.backbone = ViTModel.from_pretrained("google/vit-base-patch16-224-in21k")
@@ -600,3 +693,13 @@ class Translocator(nn.Module):
             return x1, x2, x3, x
         
         return rgb
+
+if __name__ == '__main__':
+
+    x = torch.rand(32, 3, 224, 224).cuda()
+
+    
+    model = GeoGuess2()
+    _ = model.to("cuda")
+    x1, x2, x3, scene_preds, hier_conf = model(x)
+    print(x1.shape)
