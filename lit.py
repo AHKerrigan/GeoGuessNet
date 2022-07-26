@@ -10,13 +10,9 @@ from train_and_eval import distance_accuracy
 import pandas as pd
 from geopy.distance import great_circle as GCD
 
-import sys 
-import gc
 import pickle
 
 from operator import itemgetter
-
-from pympler import tracker
 
 class Distance(torchmetrics.Metric):
 

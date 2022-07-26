@@ -113,8 +113,6 @@ trainer = pl.Trainer(accelerator ="gpu",
                      max_epochs=40,
                      callbacks=[checkpoint_callback],
                      val_check_interval = 1 / opt.val_per_epoch,
-                     log_every_n_steps = loss_cycle,
-                     enable_progress_bar = not opt.cluster)
-                     #limit_train_batches=0.01)
+                     log_every_n_steps = loss_cycle)
 trainer.fit(LitModel, train_dataloaders = train_dataloader, val_dataloaders = [val_dataloader1, val_dataloader2])
 #trainer.validate(LitModel, dataloaders=[val_dataloader1, val_dataloader2])
