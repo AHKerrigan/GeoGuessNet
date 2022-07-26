@@ -50,31 +50,20 @@ def my_transform():
 
 def m16_transform(opt):
 
-    if opt.tencrop == True:
-        m16_transform_list = transforms.Compose([
-            transforms.RandomAffine((1, 15)),
-            transforms.ColorJitter(brightness=0.4, contrast=0.4, saturation=0.4, hue=0.1),
-            transforms.RandomHorizontalFlip(p=0.5),
-            transforms.Resize(256),
-            transforms.TenCrop(224),
-            transforms.Lambda(lambda crops: torch.stack([transforms.PILToTensor()(crop) for crop in crops])),
-            #transforms.PILToTensor(),
-            transforms.ConvertImageDtype(torch.float),
-            transforms.Normalize((0.485, 0.456, 0.406), (0.229, 0.224, 0.225))
-        ])
-    else:
-        m16_transform_list = transforms.Compose([
-            transforms.RandomAffine((1, 15)),
-            transforms.ColorJitter(brightness=0.4, contrast=0.4, saturation=0.4, hue=0.1),
-            transforms.RandomHorizontalFlip(p=0.5),
-            transforms.Resize(256),
-            transforms.RandomCrop(224),
-            #transforms.TenCrop(224),
-            #transforms.Lambda(lambda crops: torch.stack([transforms.PILToTensor()(crop) for crop in crops])),
-            transforms.PILToTensor(),
-            transforms.ConvertImageDtype(torch.float),
-            transforms.Normalize((0.485, 0.456, 0.406), (0.229, 0.224, 0.225))
-        ])
+
+    m16_transform_list = transforms.Compose([
+        transforms.RandomAffine((1, 15)),
+        transforms.ColorJitter(brightness=0.4, contrast=0.4, saturation=0.4, hue=0.1),
+        transforms.RandomHorizontalFlip(p=0.5),
+        transforms.Resize(256),
+        transforms.RandomCrop(224),
+        #transforms.TenCrop(224),
+        #transforms.Lambda(lambda crops: torch.stack([transforms.PILToTensor()(crop) for crop in crops])),
+        transforms.PILToTensor(),
+        transforms.ConvertImageDtype(torch.float),
+        transforms.Normalize((0.485, 0.456, 0.406), (0.229, 0.224, 0.225))
+    ])
+
     return m16_transform_list
 def m16_val_transform(opt):
     if opt.tencrop == True:

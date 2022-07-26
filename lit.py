@@ -108,19 +108,10 @@ class LitModel(pl.LightningModule):
         ##############    Scene labels     ##############
         scenelabels = scenes[:,1]
 
-        if self.opt.tencrop:
-            imgs = rearrange(imgs, 'bs crop ch h w -> (bs crop) ch h w')
-
         if self.opt.scene:
             outs1, outs2, outs3, scene1, test = self(imgs)
         else:
             outs1, outs2, outs3, _ = self(imgs, evaluate=True)
-
-        if self.opt.tencrop:
-            outs1 = rearrange(outs1, '(bs crop) classes -> bs crop classes', crop=10).mean(1)
-            outs2 = rearrange(outs2, '(bs crop)  classes -> bs crop classes', crop=10).mean(1)
-            outs3 = rearrange(outs3, '(bs crop) classes -> bs crop classes', crop=10).mean(1)
-            scene1 = rearrange(scene1, '(bs crop) classes -> bs crop classes', crop=10).mean(1)
         
         loss1 = F.cross_entropy(outs1, labels1, label_smoothing=0.1)
         loss2 = F.cross_entropy(outs2, labels2, label_smoothing=0.1)

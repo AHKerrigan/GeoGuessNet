@@ -179,25 +179,28 @@ class JustResNet(nn.Module):
     def __init__(self, backbone=models.resnet18(weights='ResNet18_Weights.DEFAULT'), trainset='train'):
         super().__init__()
 
-        
+        '''
         self.n_features = backbone.fc.in_features
         self.backbone = torch.nn.Sequential(*list(backbone.children())[:-2])
 
         self.backbone.avgpool = nn.AdaptiveAvgPool2d(1)
         self.backbone.flatten = nn.Flatten(start_dim=1)
-        
+        '''
 
         '''
         self.backbone = ViTModel.from_pretrained("google/vit-base-patch16-224-in21k")
         self.n_features = 768
         '''
 
+        self.backbone = SwinModel.from_pretrained("microsoft/swin-base-patch4-window7-224-in22k", output_hidden_states=True)
+        self.n_features = 1024
+
         if trainset in ['train', 'traintriplet']:
             self.classification1 = nn.Linear(self.n_features, 3298)
-            #self.classification2 = nn.Linear(self.n_features, 7202)
-            self.classification2 = FeedForward(dim=self.n_features, hidden_dim=3000, dropout = 0.1, dropout2 = 0.0, out_dim=7202)
-            #self.classification3 = nn.Linear(self.n_features, 12893)
-            self.classification3 = FeedForward(dim=self.n_features, hidden_dim=6000, dropout = 0.1, dropout2 = 0.0, out_dim=12893)
+            self.classification2 = nn.Linear(self.n_features, 7202)
+            #self.classification2 = FeedForward(dim=self.n_features, hidden_dim=3000, dropout = 0.1, dropout2 = 0.0, out_dim=7202)
+            self.classification3 = nn.Linear(self.n_features, 12893)
+            #self.classification3 = FeedForward(dim=self.n_features, hidden_dim=6000, dropout = 0.1, dropout2 = 0.0, out_dim=12893)
         if trainset == 'train1M':
             self.classification1 = nn.Linear(self.n_features, 689)
             self.classification2 = nn.Linear(self.n_features, 689)
@@ -215,7 +218,8 @@ class JustResNet(nn.Module):
         #bs, ch, h, w = x.shape
 
         
-        x = self.backbone(x)
+        #x = self.backbone(x)
+        x = self.backbone(x).pooler_output
 
         x1 = self.classification1(x)
         x2 = self.classification2(x)
