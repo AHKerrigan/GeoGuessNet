@@ -89,8 +89,8 @@ if opt.model == 'isomax':
 #dup_model = copy.deepcopy(model)
 #for param in dup_model.parameters():
 #    param.requires_grad = False
-#state_dict = remove_data_parallel((torch.load('weights/SceneConf-16Scenes-NewData.pth')['state_dict']))
-#model.load_state_dict(state_dict)
+state_dict = remove_data_parallel((torch.load('weights/SceneConf-16Scenes-NewData.pth')['state_dict']))
+model.load_state_dict(state_dict)
 #if opt.wandb: wandb.watch(model, criterion, log="all")
 
 n_steps = len(train_dataset) // (opt.batch_size)
@@ -124,7 +124,7 @@ progress_bar = TQDMProgressBar(refresh_rate=progress_bar_refresh_rate)
 
 trainer = pl.Trainer(accelerator ="gpu", 
                      devices= -1, 
-                     strategy="ddp", 
+                     strategy="dp", 
                      precision=16, 
                      accumulate_grad_batches=opt.accumulate, 
                      logger=wandb_logger,
@@ -132,5 +132,5 @@ trainer = pl.Trainer(accelerator ="gpu",
                      callbacks=[checkpoint_callback, progress_bar],
                      val_check_interval = 1 / opt.val_per_epoch,
                      log_every_n_steps = loss_cycle)
-trainer.fit(LitModel, train_dataloaders = train_dataloader, val_dataloaders = [val_dataloader1, val_dataloader2])
-#trainer.validate(LitModel, dataloaders=[val_dataloader1, val_dataloader2])
+#trainer.fit(LitModel, train_dataloaders = train_dataloader, val_dataloaders = [val_dataloader1, val_dataloader2])
+trainer.validate(LitModel, dataloaders=[val_dataloader1, val_dataloader2])

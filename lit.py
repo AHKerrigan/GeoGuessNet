@@ -23,44 +23,42 @@ class Distance(torchmetrics.Metric):
         if opt.trainset in ['train', 'traintriplet']:
             self.coarse_gps = pd.read_csv(opt.resources + "cells_50_1000.csv") 
 
-
+        '''
         self.add_state(f"correct2500", torch.tensor(0), dist_reduce_fx="sum")
         self.add_state(f"correct750", torch.tensor(0), dist_reduce_fx="sum")
         self.add_state(f"correct200", torch.tensor(0), dist_reduce_fx="sum")
         self.add_state(f"correct25", torch.tensor(0), dist_reduce_fx="sum")
         self.add_state(f"correct1", torch.tensor(0), dist_reduce_fx="sum")
+        '''
 
-        self.all_dis = {
-            2500 : self.correct2500,
-            750 : self.correct750,            
-            200 : self.correct200,
-            25 : self.correct25,
-            1 : self.correct1,
-        }
+        self.add_state(f"correct", torch.tensor([0, 0, 0, 0, 0]), dist_reduce_fx="sum")
+
         self.add_state("n_observations", torch.tensor(0), dist_reduce_fx="sum")
 
     def update(self, preds, targets):
-        for dis in self.opt.distances:
-            course_preds = list(self.coarse_gps.iloc[preds.cpu().numpy()][['latitude_mean', 'longitude_mean']].to_records(index=False))
-            course_target = [(x[0], x[1]) for x in targets]   
-
-            total = len(course_target)
+        course_preds = list(self.coarse_gps.iloc[preds.cpu().numpy()][['latitude_mean', 'longitude_mean']].to_records(index=False))
+        course_target = [(x[0], x[1]) for x in targets]  
+    
+        adds = torch.tensor([0, 0, 0, 0, 0]).cuda()
+        for i, dis in enumerate(self.opt.distances):
             correct = 0
-
-            for i in range(len(course_target)):
+            for j in range(len(course_target)):
                 #print(GD(course_preds[i], course_target[i]).km)
                 #if GD(course_preds[i], course_target[i]).km <= dis:
-                if GCD(course_preds[i], course_target[i]).km <= dis:
+                if GCD(course_preds[j], course_target[j]).km <= dis:
                     correct += 1
-            self.all_dis[dis] += torch.tensor(correct)
+            self.correct[i] += correct
         self.n_observations += preds.numel()
     def compute(self):
 
+        '''
         ret = torch.zeros(len(self.opt.distances)).cuda()
         for i, dis in enumerate(self.opt.distances):
             #print(f"dis = {dis} self.all_dis[dis] / self.n_observations - {self.all_dis[dis]} / {self.n_observations}")
             ret[i] = self.all_dis[dis] / self.n_observations
-        return ret
+        '''
+
+        return self.correct / self.n_observations
 
 
 class ValEveryNSteps(pl.Callback):
@@ -79,7 +77,7 @@ class LitModel(pl.LightningModule):
         self.model = model
         self.n_dataloaders = 2
 
-        self.val_accuracy = [Distance(opt).cuda(), Distance(opt).cuda()]
+        self.val_accuracy = nn.ModuleList([Distance(opt), Distance(opt)])
 
         if opt.trainset == 'train':
             maps = pickle.load(open(opt.resources+"class_map.p", "rb"))
@@ -148,6 +146,7 @@ class LitModel(pl.LightningModule):
         outs2= F.softmax(outs2, dim=1)
         outs3 = F.softmax(outs3, dim=1)
 
+        
         coarseweights = torch.ones(outs2.shape).cuda()
         mediumweights = torch.ones(outs3.shape).cuda()
 
@@ -159,25 +158,22 @@ class LitModel(pl.LightningModule):
         for i in range(outs3.shape[1]):
             mediumweights[:,i] = outs2[:,self.medium2fine[i]]
         outs3 = outs3 * mediumweights
+        
 
         outs3 = torch.argmax(outs3, dim=-1)
 
         batch_results = self.val_accuracy[dataloader_idx](outs3, labels)
 
-        if dataloader_idx == 0:
-            dataset_name = ""
-        else:
-            dataset_name = "yfcc25600 "
-
-        #for i, dis in enumerate(self.opt.distances):
-        #    self.log(f"{dataset_name}{dis} Accuracy batch", batch_results[i], prog_bar=False, sync_dist=True)
-        #return {'targets' : labels, 'preds': outs3}
+        for i, dis in enumerate(self.opt.distances):
+            self.log(f"{dis} Accuracy", batch_results[i], on_step=False, on_epoch=True, prog_bar=False, sync_dist=True)
+        return {'targets' : labels, 'preds': outs3}
 
     #def validation_step_end(self, batch_parts):
     #
     #    print(batch_parts['targets'].shape)
     #    print(batch_parts['preds'].shape)
 
+    '''
     def validation_epoch_end(self, validation_step_outputs):
         
         acc0 = self.val_accuracy[0].compute()
@@ -189,6 +185,7 @@ class LitModel(pl.LightningModule):
 
         #mem = tracker.SummaryTracker()
         #print(sorted(mem.create_summary(), reverse=True, key=itemgetter(2))[:10])
+    '''
 
     def configure_optimizers(self):
         optimizer = torch.optim.SGD(self.parameters(), lr=self.opt.lr, momentum=0.9, weight_decay=0.0001)
