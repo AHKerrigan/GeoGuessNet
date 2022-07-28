@@ -26,7 +26,7 @@ def getopt():
     opt.n_epochs = 25
 
     #opt.description = 'GeoGuess4-4.2M-Im2GPS3k-F*'
-    opt.description = 'Testing multiscale'
+    opt.description = 'Testing'
     opt.evaluate = False
     opt.cluster = False
 
@@ -46,7 +46,7 @@ def getopt():
     opt.tencrop = True
     
     opt.loss = 'ce'
-    opt.model = 'GeoGuess3'
+    opt.model = 'GeoGuess1'
     opt.archname = opt.model
 
     opt.wandb = True

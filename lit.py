@@ -17,37 +17,29 @@ from operator import itemgetter
 class Distance(torchmetrics.Metric):
 
     full_state_update: bool = False
-    def __init__(self, opt):
+    def __init__(self, opt, dis=0):
         super().__init__()
         self.opt = opt
+        self.dis = dis
         if opt.trainset in ['train', 'traintriplet']:
             self.coarse_gps = pd.read_csv(opt.resources + "cells_50_1000.csv") 
 
-        '''
-        self.add_state(f"correct2500", torch.tensor(0), dist_reduce_fx="sum")
-        self.add_state(f"correct750", torch.tensor(0), dist_reduce_fx="sum")
-        self.add_state(f"correct200", torch.tensor(0), dist_reduce_fx="sum")
-        self.add_state(f"correct25", torch.tensor(0), dist_reduce_fx="sum")
-        self.add_state(f"correct1", torch.tensor(0), dist_reduce_fx="sum")
-        '''
 
-        self.add_state(f"correct", torch.tensor([0, 0, 0, 0, 0]), dist_reduce_fx="sum")
-
+        self.add_state("correct", torch.tensor(0), dist_reduce_fx="sum")
         self.add_state("n_observations", torch.tensor(0), dist_reduce_fx="sum")
 
     def update(self, preds, targets):
         course_preds = list(self.coarse_gps.iloc[preds.cpu().numpy()][['latitude_mean', 'longitude_mean']].to_records(index=False))
         course_target = [(x[0], x[1]) for x in targets]  
     
-        adds = torch.tensor([0, 0, 0, 0, 0]).cuda()
-        for i, dis in enumerate(self.opt.distances):
-            correct = 0
-            for j in range(len(course_target)):
-                #print(GD(course_preds[i], course_target[i]).km)
-                #if GD(course_preds[i], course_target[i]).km <= dis:
-                if GCD(course_preds[j], course_target[j]).km <= dis:
-                    correct += 1
-            self.correct[i] += correct
+        adds = torch.tensor(0).cuda()
+        correct = 0
+        for j in range(len(course_target)):
+            #print(GD(course_preds[i], course_target[i]).km)
+            #if GD(course_preds[i], course_target[i]).km <= dis:
+            if GCD(course_preds[j], course_target[j]).km <= self.dis:
+                correct += 1
+        self.correct += correct
         self.n_observations += preds.numel()
     def compute(self):
 
@@ -77,7 +69,10 @@ class LitModel(pl.LightningModule):
         self.model = model
         self.n_dataloaders = 2
 
-        self.val_accuracy = nn.ModuleList([Distance(opt), Distance(opt)])
+        self.val_accuracy = nn.ModuleList([nn.ModuleDict(), nn.ModuleDict()])
+        for dis in opt.distances:
+            self.val_accuracy[0][f'{dis} Accuracy'] = Distance(opt, dis)
+            self.val_accuracy[1][f'{dis} Accuracy'] = Distance(opt, dis)
 
         if opt.trainset == 'train':
             maps = pickle.load(open(opt.resources+"class_map.p", "rb"))
@@ -162,16 +157,17 @@ class LitModel(pl.LightningModule):
 
         outs3 = torch.argmax(outs3, dim=-1)
 
-        batch_results = self.val_accuracy[dataloader_idx](outs3, labels)
-
-        for i, dis in enumerate(self.opt.distances):
-            self.log(f"{dis} Accuracy", batch_results[i], on_step=False, on_epoch=True, prog_bar=False, sync_dist=True)
+        #batch_results = self.val_accuracy[dataloader_idx](outs3, labels)
+        for dis in self.opt.distances:
+            self.val_accuracy[dataloader_idx][f'{dis} Accuracy'].update(outs3, labels)
+        self.log_dict(self.val_accuracy[dataloader_idx])
         return {'targets' : labels, 'preds': outs3}
-
-    #def validation_step_end(self, batch_parts):
-    #
-    #    print(batch_parts['targets'].shape)
-    #    print(batch_parts['preds'].shape)
+    '''
+    def validation_step_end(self, batch_parts, dataloader_idx):
+        
+        print(batch_parts['targets'].shape)
+        print(batch_parts['preds'].shape)
+    '''
 
     '''
     def validation_epoch_end(self, validation_step_outputs):
