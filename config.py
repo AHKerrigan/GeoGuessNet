@@ -11,8 +11,8 @@ def getopt():
     opt = parser.parse_args()
     #opt = parser.parse_known_args()[0]
     opt.gpus = 1
-    #opt.kernels = multiprocessing.cpu_count()
-    opt.kernels = opt.gpus*4
+    opt.kernels = multiprocessing.cpu_count()
+    #opt.kernels = opt.gpus*4
 
     opt.BDDfolder = "/home/alec/Documents/BigDatasets/BDD100k_Big/Ground/"
     opt.yfcc25600folder = "/home/alec/Documents/BigDatasets/yfcc25600/"
@@ -26,7 +26,7 @@ def getopt():
     opt.n_epochs = 25
 
     #opt.description = 'GeoGuess4-4.2M-Im2GPS3k-F*'
-    opt.description = 'Testing'
+    opt.description = 'Testing multiscale'
     opt.evaluate = False
     opt.cluster = False
 
@@ -46,13 +46,13 @@ def getopt():
     opt.tencrop = True
     
     opt.loss = 'ce'
-    opt.model = 'GeoGuess1'
+    opt.model = 'GeoGuess3'
     opt.archname = opt.model
 
     opt.wandb = True
 
-    opt.batch_size = 12
-    opt.accumulate = 40
+    opt.batch_size = 100
+    opt.accumulate = 6
     opt.distances = [2500, 750, 200, 25, 1]
     opt.trainset = 'train'
     opt.testset1 = 'im2gps3k'

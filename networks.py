@@ -543,6 +543,65 @@ class GeoGuess2(nn.Module):
         else:
             return x1, x2, x3, x_out
 
+class GeoGuess3(nn.Module):
+
+    def __init__(self, trainset='train'):
+        super().__init__()
+
+        self.backbone = SwinModel.from_pretrained("microsoft/swin-base-patch4-window7-224-in22k", output_hidden_states=True)
+        self.n_features = 1024
+        
+        if trainset in ['train', 'traintriplet']:
+            self.classification1 = nn.Linear(self.n_features, 3298)
+            self.classification2 = nn.Linear(self.n_features, 7202)
+            self.classification3 = nn.Linear(self.n_features, 12893)
+        if trainset == 'train1M':
+            self.classification1 = nn.Linear(self.n_features, 689)
+            self.classification2 = nn.Linear(self.n_features, 689)
+            self.classification3 = nn.Linear(self.n_features, 689)
+        if trainset == 'bddtrain':
+            self.classification1 = nn.Linear(self.n_features, 49)
+            self.classification2 = nn.Linear(self.n_features, 215)
+            self.classification3 = nn.Linear(self.n_features, 520) 
+
+        self.trans = CustomTransformer1(self.n_features, 6, 12, 64, 1024, dropout=0.0)
+        self.queries = nn.Parameter(torch.rand(16, 3, self.n_features, requires_grad=True, device='cuda'))
+
+        self.ppnorm = nn.LayerNorm(self.n_features // 2)
+        self.project = nn.Linear(self.n_features // 2, self.n_features)
+
+    def forward(self, x, evaluate=False):
+        bs, ch, h, w = x.shape
+
+        qs = rearrange(self.queries, 'scenes hiers dim -> 1 (scenes hiers) dim').repeat(bs, 1, 1)
+        x = self.backbone(x).hidden_states
+
+        x1 = x[-1]
+        x2 = self.project(self.ppnorm(x[-3]))
+        x = torch.cat((x1, x2), dim=1)
+
+        #print(x.get_device(), flush=True)
+        #print(qs.get_device(), flush=True)
+
+        x_out = self.trans(qs, x, x)
+
+        x_out = rearrange(x_out, 'bs (scenes hiers) dim -> bs scenes hiers dim', hiers=3)
+        scene_preds = x_out[:,:,:,0].mean(2)
+        scene_choice = torch.argmax(scene_preds, dim=1)
+
+        x_out = x_out[torch.arange(bs), scene_choice]
+        
+        x1 = self.classification1(x_out[:, 0])
+        x2 = self.classification2(x_out[:, 1])
+        x3 = self.classification3(x_out[:, 2])
+
+        # Confidence of each hierarchy
+        hier_conf = torch.sigmoid(x_out[:,:,0])
+
+        if not evaluate:
+            return x1, x2, x3, scene_preds, hier_conf
+        else:
+            return x1, x2, x3, x_out
 class MixTransformerDeTR(nn.Module):
     def __init__(self, backbone=models.resnet101(weights='ResNet101_Weights.DEFAULT'), trainset='train'):
         super().__init__()

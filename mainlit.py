@@ -60,10 +60,15 @@ with open("weights/train_datasets.pkl", "rb") as f:
 val_dataset1 = dataloader.M16Dataset(split=opt.testset1, opt=opt)
 val_dataset2 = dataloader.M16Dataset(split=opt.testset2, opt=opt)
 
+train_batch = opt.batch_size
+if opt.tencrop: 
+    val_batch = opt.batch_size // 10
+else:
+    val_batch = opt.batch_size
 # Non-distributed training
-train_dataloader = torch.utils.data.DataLoader(train_dataset, batch_size=opt.batch_size, num_workers=opt.kernels, shuffle=True, drop_last=False, pin_memory=True)
-val_dataloader1 = torch.utils.data.DataLoader(val_dataset1, batch_size=opt.batch_size, num_workers=opt.kernels, shuffle=True, drop_last=False, pin_memory=True)
-val_dataloader2 = torch.utils.data.DataLoader(val_dataset2, batch_size=opt.batch_size, num_workers=opt.kernels, shuffle=True, drop_last=False, pin_memory=True)
+train_dataloader = torch.utils.data.DataLoader(train_dataset, batch_size=train_batch, num_workers=opt.kernels, shuffle=True, drop_last=False, pin_memory=True)
+val_dataloader1 = torch.utils.data.DataLoader(val_dataset1, batch_size=val_batch, num_workers=opt.kernels, shuffle=True, drop_last=False, pin_memory=True)
+val_dataloader2 = torch.utils.data.DataLoader(val_dataset2, batch_size=val_batch, num_workers=opt.kernels, shuffle=True, drop_last=False, pin_memory=True)
 
 val_dataloaders = [val_dataloader1, val_dataloader2]
 
@@ -81,6 +86,8 @@ if opt.model == 'GeoGuess1':
     model = networks.GeoGuess1(trainset=opt.trainset)
 if opt.model == 'GeoGuess2':
     model = networks.GeoGuess2(trainset=opt.trainset)
+if opt.model == 'GeoGuess3':
+    model = networks.GeoGuess3(trainset=opt.trainset)
 if opt.model == 'translocator':
     model = networks.Translocator(trainset='train')
 if opt.model == 'isomax':
@@ -89,8 +96,8 @@ if opt.model == 'isomax':
 #dup_model = copy.deepcopy(model)
 #for param in dup_model.parameters():
 #    param.requires_grad = False
-state_dict = remove_data_parallel((torch.load('weights/SceneConf-16Scenes-NewData.pth')['state_dict']))
-model.load_state_dict(state_dict)
+#state_dict = remove_data_parallel((torch.load('weights/SceneConf-16Scenes-NewData.pth')['state_dict']))
+#model.load_state_dict(state_dict)
 #if opt.wandb: wandb.watch(model, criterion, log="all")
 
 n_steps = len(train_dataset) // (opt.batch_size)
@@ -109,7 +116,7 @@ print("Validating every", val_cycle, "batches")
 
 #val_callback = ValEveryNSteps(val_cycle)
 checkpoint_callback = pl.callbacks.ModelCheckpoint(dirpath='weights/',
-                                                   filename="{epoch}--{yfcc25600 1 Accuracy}--"+opt.description,
+                                                   filename="{epoch}--"+opt.model+"--"+opt.description,
                                                    every_n_train_steps = n_steps // 3)
 
 LitModel = LitModel(opt=opt, model=model)
@@ -132,5 +139,5 @@ trainer = pl.Trainer(accelerator ="gpu",
                      callbacks=[checkpoint_callback, progress_bar],
                      val_check_interval = 1 / opt.val_per_epoch,
                      log_every_n_steps = loss_cycle)
-#trainer.fit(LitModel, train_dataloaders = train_dataloader, val_dataloaders = [val_dataloader1, val_dataloader2])
-trainer.validate(LitModel, dataloaders=[val_dataloader1, val_dataloader2])
+trainer.fit(LitModel, train_dataloaders = train_dataloader, val_dataloaders = [val_dataloader1, val_dataloader2])
+#trainer.validate(LitModel, dataloaders=[val_dataloader1, val_dataloader2])
