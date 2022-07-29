@@ -1,3 +1,4 @@
+from pickletools import optimize
 import pytorch_lightning as pl
 import torchmetrics
 import torch
@@ -11,6 +12,8 @@ import pandas as pd
 from geopy.distance import great_circle as GCD
 
 import pickle
+
+from pl_bolts.optimizers.lr_scheduler import LinearWarmupCosineAnnealingLR
 
 from operator import itemgetter
 
@@ -63,11 +66,12 @@ class ValEveryNSteps(pl.Callback):
 
 
 class LitModel(pl.LightningModule):
-    def __init__(self, opt, model, n_dataloaders=2):
+    def __init__(self, opt, model, n_dataloaders=2, n_train_ex=1):
         super().__init__()
         self.opt = opt
         self.model = model
         self.n_dataloaders = 2
+        self.n_train_ex = n_train_ex
 
         self.val_accuracy = nn.ModuleList([nn.ModuleDict(), nn.ModuleDict()])
         for dis in opt.distances:
@@ -110,13 +114,13 @@ class LitModel(pl.LightningModule):
         loss2 = F.cross_entropy(outs2, labels2, label_smoothing=0.1)
         loss3 = F.cross_entropy(outs3, labels3, label_smoothing=0.1)
 
-        loss = loss1 + loss2 + loss3
+        loss = (self.opt.hier_hypers[0] * loss1) + (self.opt.hier_hypers[1] * loss2) + (self.opt.hier_hypers[2] * loss3)
 
         if self.opt.scene:
             sceneloss = F.cross_entropy(scene1, scenelabels)
             loss += sceneloss
         
-        self.log("Training Loss", loss, on_epoch=False)
+        self.log("Training Loss", loss)
         
         return loss
     
@@ -184,6 +188,9 @@ class LitModel(pl.LightningModule):
     '''
 
     def configure_optimizers(self):
-        optimizer = torch.optim.SGD(self.parameters(), lr=self.opt.lr, momentum=0.9, weight_decay=0.0001)
-        lr_scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=self.opt.step_size, gamma=0.5)
+        #optimizer = torch.optim.SGD(self.parameters(), lr=self.opt.lr, momentum=0.9, weight_decay=0.0001)
+        optimizer = torch.optim.AdamW(self.parameters(), lr=self.opt.lr, weight_decay=0.0001)
+        #lr_scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=self.opt.step_size, gamma=0.5)
+        #lr_scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, self.n_train_ex * self.opt.n_epochs)
+        lr_scheduler = LinearWarmupCosineAnnealingLR(optimizer, warmup_epochs=2, max_epochs = self.opt.n_epochs)
         return [optimizer], [lr_scheduler]

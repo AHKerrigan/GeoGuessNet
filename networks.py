@@ -1,9 +1,5 @@
 #from json import encoder
 #from msilib.schema import Feature
-from torch.nn import TransformerEncoder, TransformerEncoderLayer
-
-from positional_encodings.torch_encodings import PositionalEncoding1D
-
 from einops import rearrange, repeat
 from einops.layers.torch import Rearrange
 
@@ -18,7 +14,7 @@ import torch
 
 from geopy.distance import lonlat, distance
 
-from utilities.detrstuff import nested_tensor_from_tensor_list
+
 from transformers import ViTModel, DetrForSegmentation
 from transformers import SwinModel
 import random

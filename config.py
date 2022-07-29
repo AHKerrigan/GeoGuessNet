@@ -23,7 +23,7 @@ def getopt():
 
     opt.size = 224
 
-    opt.n_epochs = 25
+    opt.n_epochs = 40
 
     #opt.description = 'GeoGuess4-4.2M-Im2GPS3k-F*'
     opt.description = 'Testing'
@@ -36,7 +36,7 @@ def getopt():
     # How often to validate
     opt.val_per_epoch = 25
 
-    opt.lr = 0.01
+    opt.lr = 0.1
     opt.step_size = 4
     opt.hier_eval = True
     opt.scene = True
@@ -51,9 +51,11 @@ def getopt():
 
     opt.wandb = True
 
-    opt.batch_size = 100
-    opt.accumulate = 6
+    opt.batch_size = 128
+    opt.accumulate = 2
     opt.distances = [2500, 750, 200, 25, 1]
+    
+    opt.hier_hypers = [0.5, 0.3, 0.2]
     opt.trainset = 'train'
     opt.testset1 = 'im2gps3k'
     opt.testset2 = 'yfcc25600'
