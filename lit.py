@@ -190,7 +190,7 @@ class LitModel(pl.LightningModule):
     def configure_optimizers(self):
         #optimizer = torch.optim.SGD(self.parameters(), lr=self.opt.lr, momentum=0.9, weight_decay=0.0001)
         optimizer = torch.optim.AdamW(self.parameters(), lr=self.opt.lr, weight_decay=0.0001)
-        #lr_scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=self.opt.step_size, gamma=0.5)
+        lr_scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=self.opt.step_size, gamma=0.5)
         #lr_scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, self.n_train_ex * self.opt.n_epochs)
-        lr_scheduler = LinearWarmupCosineAnnealingLR(optimizer, warmup_epochs=2, max_epochs = self.opt.n_epochs)
+        #lr_scheduler = LinearWarmupCosineAnnealingLR(optimizer, warmup_epochs=2, max_epochs = self.opt.n_epochs)
         return [optimizer], [lr_scheduler]
